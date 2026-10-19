@@ -85,6 +85,8 @@ criteria come from the `crux-in-a-box` implementation PR.
 
    ```sh
    ./devctl --name sdk down
+   # If this instance has an isolated provisioning machine:
+   orb stop ciab-sdk-run
    ./devctl --name sdk reset --confirm sdk
    ```
 
@@ -295,6 +297,13 @@ Private host state is `~/.local/state/ciab-devenv/<name>` (`CIAB_STATE_ROOT`
 overrides its parent). `down` preserves data. `reset --confirm NAME` deletes only
 that named local stack and its state. Remove its separate machine with
 `machine delete --confirm NAME` after inspecting/exporting evidence.
+
+After testing each CRUX PR, export the evidence you need, run `down`, and stop
+its isolated machine with `orb stop ciab-NAME-run` if one was created. Do this
+after failed or interrupted testing too. Check `docker --context orbstack ps`
+and `orb list` to confirm that the instance has no running containers or machine.
+Stopping preserves evidence; resetting volumes or deleting the machine discards
+it. Leave services running only when the user explicitly requests it.
 
 ## Environment development
 

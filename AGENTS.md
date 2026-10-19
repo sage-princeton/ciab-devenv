@@ -27,6 +27,11 @@ should verify only the environment's own orchestration and fixtures.
 4. Fix the responsible component. Environment behavior belongs here; production
    scaffold behavior belongs in crux-in-a-box. Reuse production implementations.
 5. Record evidence and remaining gaps before reporting completion.
+6. After testing each PR, run `./devctl --name NAME down` and stop any associated
+   isolated machine with `orb stop ciab-NAME-run`, including after failures or
+   interruptions. Verify no containers or machines for that instance remain
+   running. Preserve reports and volumes unless intentionally discarding them;
+   do not leave services running between PRs without the user's explicit request.
 
 ## Required evidence for every validation report
 
