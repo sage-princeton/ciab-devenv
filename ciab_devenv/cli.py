@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -131,8 +132,18 @@ def main(argv: list[str] | None = None) -> int:
                         print()
                         command.print_help()
         return 0
+    operation_lock = None
     try:
         instance = Environment(args.name)
+        changes_environment = args.command in {"setup", "bootstrap", "select", "up", "build", "down", "reset", "exec", "run", "check", "probe", "doctor"}
+        changes_environment |= args.command == "machine" and args.action in {"create", "provision", "delete"}
+        if changes_environment:
+            instance.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            operation_lock = os.fdopen(os.open(instance.root / "operation.lock", os.O_CREAT | os.O_RDWR, 0o600), "w")
+            try:
+                fcntl.flock(operation_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise DevError("Another environment command is running for this instance. Status, logs, reports and fixture controls remain available.") from None
         if args.command in ("setup", "bootstrap"):
             if not 1024 <= args.port <= 65535:
                 raise DevError("Choose a localhost port between 1024 and 65535.")
@@ -239,3 +250,6 @@ def main(argv: list[str] | None = None) -> int:
     except (DevError, OSError, subprocess.CalledProcessError) as exc:
         print(f"devctl: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if operation_lock is not None:
+            operation_lock.close()
