@@ -1,0 +1,187 @@
+name: ciab
+
+x-langfuse: &langfuse-env
+  DATABASE_URL: postgresql://postgres:${CIAB_PASSWORD}@postgres:5432/langfuse
+  SALT: ${CIAB_SALT}
+  ENCRYPTION_KEY: ${CIAB_ENCRYPTION_KEY}
+  NEXTAUTH_URL: http://localhost:${CIAB_PORT}
+  NEXTAUTH_SECRET: ${CIAB_PASSWORD}
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: default
+  CLICKHOUSE_PASSWORD: ${CIAB_PASSWORD}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${CIAB_PASSWORD}
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ciab
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${CIAB_PASSWORD}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://storage:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ciab
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${CIAB_PASSWORD}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://storage:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+
+services:
+  postgres:
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_PASSWORD: ${CIAB_PASSWORD}
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7.4.5@sha256:90e7a336d044f1abc9e9dbc05d65566850896d11453bbd1dd0fb7e5059f0e8fb
+    command: [redis-server, --requirepass, "${CIAB_PASSWORD}", --maxmemory-policy, noeviction]
+    volumes: [redis:/data]
+    healthcheck:
+      test: [CMD, redis-cli, --no-auth-warning, -a, "${CIAB_PASSWORD}", ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.12@sha256:8a790dd3468db22b1d4e7b18a176f378ff5ff6053b9c48dd4ea1fa71a24c5ba6
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_PASSWORD: ${CIAB_PASSWORD}
+    volumes: [clickhouse:/var/lib/clickhouse]
+    healthcheck:
+      test: [CMD, wget, --spider, -q, http://localhost:8123/ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  storage:
+    image: cgr.dev/chainguard/minio@sha256:2915cb406f38ed6ff9634de0a3e4a9423e2dda06a6f1aca18f8c968aa37a01f6
+    entrypoint: [sh, -c]
+    command: ["mkdir -p /data/langfuse /data/run-archives && minio server /data"]
+    environment:
+      MINIO_ROOT_USER: ciab
+      MINIO_ROOT_PASSWORD: ${CIAB_PASSWORD}
+    volumes: [storage:/data]
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  langfuse:
+    image: docker.langfuse.com/langfuse/langfuse:4.64.0@sha256:ce6c636df92db6638f15beb7d826f0460a51d04fcfe2e55132fcc8aad9e1bef8
+    environment:
+      <<: *langfuse-env
+      HOSTNAME: 0.0.0.0
+      LANGFUSE_INIT_ORG_ID: ciab
+      LANGFUSE_INIT_ORG_NAME: CIAB Development
+      LANGFUSE_INIT_PROJECT_ID: ciab
+      LANGFUSE_INIT_PROJECT_NAME: Local runs
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${CIAB_LOCAL_LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${CIAB_LOCAL_LANGFUSE_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: developer@ciab.test
+      LANGFUSE_INIT_USER_NAME: Developer
+      LANGFUSE_INIT_USER_PASSWORD: ${CIAB_PASSWORD}
+    ports: ["127.0.0.1:${CIAB_PORT}:3000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      clickhouse: {condition: service_healthy}
+      storage: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000/api/public/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.64.0@sha256:68549f1167370de7e601114e592dbc86aac13216d90c5193063a2d9d83d9ec57
+    environment: *langfuse-env
+    depends_on:
+      langfuse: {condition: service_healthy}
+  edge:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    volumes:
+      - ./services/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CIAB_INSTANCE}/certs:/certs:ro
+    networks:
+      default:
+        aliases: [langfuse.test, cost.test, fixtures.test, "${CIAB_RUNPOD_HOST}"]
+  fixtures:
+    image: python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+    command: [python, /devenv/services/fixtures.py]
+    environment:
+      CIAB_FIXTURE_TOKEN: ${CIAB_FIXTURE_TOKEN}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+    volumes:
+      - ./services:/devenv/services:ro
+      - fixtures:/data
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  cost:
+    image: python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+    command: [python, /devenv/services/cost.py]
+    environment:
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      COST_TRACKER_TOKEN: ${COST_TRACKER_TOKEN}
+      SSL_CERT_FILE: /certs/server.crt
+    volumes:
+      - ./services:/devenv/services:ro
+      - ${CIAB_SOURCE}/lambda:/source/lambda:ro
+      - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro
+  runner:
+    profiles: [runner]
+    build:
+      context: .
+      dockerfile: images/runner.Dockerfile
+      additional_contexts:
+        scaffold: ${CIAB_SOURCE}/src/sdk-scaffold
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 4g
+    cpus: 4
+    pids_limit: 512
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CIAB_PROJECT: ${CIAB_PROJECT}
+      CRUX_MODEL: ${CRUX_MODEL}
+      CRUX_REASONING_EFFORT: ${CRUX_REASONING_EFFORT}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      COST_TRACKER_URL: ${COST_TRACKER_URL}
+      COST_TRACKER_TOKEN: ${COST_TRACKER_TOKEN}
+      CIAB_FIXTURE_URL: https://fixtures.test
+      CIAB_FIXTURE_TOKEN: ${CIAB_FIXTURE_TOKEN}
+      SSL_CERT_FILE: /certs/server.crt
+      REQUESTS_CA_BUNDLE: /certs/server.crt
+      CIAB_STORAGE_PASSWORD: ${CIAB_PASSWORD}
+      RUNPOD_API_KEY: ${RUNPOD_API_KEY}
+    volumes:
+      - ./services:/devenv/services:ro
+      - ./ciab_devenv:/devenv/ciab_devenv:ro
+      - ./tests:/devenv/tests:ro
+      - ${CIAB_SOURCE}:/source:ro
+      - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro
+      - work:/work
+
+volumes:
+  postgres:
+  redis:
+  clickhouse:
+  storage:
+  fixtures:
+  work:

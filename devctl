@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PYTHONPATH="$(cd "$(dirname "$0")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m ciab_devenv "$@"

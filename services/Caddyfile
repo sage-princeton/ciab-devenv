@@ -1,0 +1,20 @@
+{
+  auto_https disable_redirects
+  admin off
+}
+https://langfuse.test {
+  tls /certs/server.crt /certs/server.key
+  reverse_proxy langfuse:3000
+}
+https://cost.test {
+  tls /certs/server.crt /certs/server.key
+  reverse_proxy cost:8080
+}
+https://fixtures.test {
+  tls /certs/server.crt /certs/server.key
+  reverse_proxy fixtures:8080
+}
+https://api.runpod.io {
+  tls /certs/server.crt /certs/server.key
+  reverse_proxy fixtures:8080
+}
