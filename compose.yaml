@@ -173,6 +173,7 @@ services:
     volumes:
       - ./services:/devenv/services:ro
       - ./ciab_devenv:/devenv/ciab_devenv:ro
+      - ./verification:/devenv/verification:ro
       - ./tests:/devenv/tests:ro
       - ${CIAB_SOURCE}:/source:ro
       - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro

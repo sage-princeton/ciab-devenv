@@ -13,10 +13,13 @@ combine unrelated PRs to make a test pass. Rebuild when dependencies change.
 
 This repo owns infrastructure, reusable service fixtures, generic execution and
 observation. It must not store crux-in-a-box feature scenarios, acceptance
-criteria, scenario catalogs or feature-specific assertions. Those belong in the
-implementing crux-in-a-box PRs. Agents implementing those PRs use this environment
-to exercise their scenarios and record evidence before publishing. Tests here
-should verify only the environment's own orchestration and fixtures.
+criteria, scenario catalogs or feature-specific assertions. Describe those in
+the implementing crux-in-a-box PR descriptions or comments. Create PR-specific
+verification scripts, drop-ins and evidence files temporarily outside git
+checkouts; never commit them to any repository. Small scripts can be included in
+the PR description. Keep reusable, feature-independent helper methods in
+`verification/`. Normal product unit/regression tests remain in crux-in-a-box;
+tests here verify this environment's own orchestration and fixtures.
 
 1. Select a named environment and source worktree. Check the current commit and
    local changes before interpreting results.
@@ -72,6 +75,6 @@ actual Slack/email recipients needs explicit authorization; local fixtures do no
 ## Verification
 
 Run `python3 -m unittest discover -s tests -v`, `python3 -m compileall -q
-ciab_devenv services tests`, and exercise the changed environment commands. Run Ruff
+ciab_devenv services verification tests`, and exercise the changed environment commands. Run Ruff
 inside the runner. Exercise CLI behavior, startup and recovery after changes to
 orchestration. Do not commit design conversation notes under `docs/superpowers/`.

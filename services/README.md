@@ -2,8 +2,10 @@
 
 These files make the selected CRUX implementation runnable and observable on
 local infrastructure. They provide generic execution, production-script adapters
-and reusable protocol fixtures. The implementing CRUX PR supplies scenarios,
-drop-ins and acceptance assertions.
+and reusable protocol fixtures. The implementing CRUX PR description supplies
+scenarios and acceptance assertions; test-specific drop-ins and scripts are
+created temporarily outside git. Reusable verification helpers live in
+[verification/](../verification/README.md).
 
 **Key points:** Langfuse and S3 are real local services; Slack, mailbox and cloud
 APIs are limited fixtures. Inference always reaches the model provider. Fixtures

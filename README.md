@@ -4,9 +4,12 @@ OrbStack infrastructure for running `crux-in-a-box` worktrees with real provider
 inference, local services, disposable workspaces and observable execution.
 
 This repository supplies the environment. **Feature scenarios, acceptance
-criteria and assertions belong in the implementing `crux-in-a-box` PRs.** Agents
-and humans use this environment to carry out those scenarios and inspect the
-results. This repo's tests cover its own orchestration and fixtures.
+criteria and assertions belong in the implementing `crux-in-a-box` PR descriptions
+or comments.** Create PR-specific verification scripts and inputs temporarily
+outside git checkouts; do not commit them anywhere. Reusable helper methods live
+in `verification/`. Agents and humans use this environment to carry out those
+scenarios and inspect the results. This repo's tests cover its own orchestration
+and fixtures; normal CRUX unit/regression tests stay with the product code.
 
 **Start here:** the runbook below starts the local stack and launches a CRUX.
 Use [AGENTS.md](AGENTS.md) for agent workflow and evidence requirements.
@@ -15,6 +18,7 @@ Use [AGENTS.md](AGENTS.md) for agent workflow and evidence requirements.
 | --- | --- |
 | [ciab_devenv/](ciab_devenv/README.md) | Host CLI, instance configuration, input staging and machine orchestration |
 | [services/](services/README.md) | Container/machine adapters, local protocol fixtures and execution reports |
+| [verification/](verification/README.md) | Reusable SDK execution, state/trace inspection and upstream check helpers |
 | [images/](images/README.md) | Runner image and dependency/build boundaries |
 | [tests/](tests/README.md) | Tests of this environment's behavior |
 
@@ -309,11 +313,11 @@ it. Leave services running only when the user explicitly requests it.
 
 ```sh
 ./devctl --name sdk exec python -m unittest discover -s /devenv/tests -v
-./devctl --name sdk exec ruff check /devenv/ciab_devenv /devenv/services /devenv/tests --no-cache
+./devctl --name sdk exec ruff check /devenv/ciab_devenv /devenv/services /devenv/verification /devenv/tests --no-cache
 ```
 
 Prototype tracked by [AE-269](https://linear.app/agent-evals/issue/AE-269).
 The shared services and execution/reporting layers are separate from the SDK
 launch adapter. Future AgentRQ-hosted Claude Code/Codex runners can add adapters
 and Compose profiles while reusing these services. Their feature scenarios stay
-in the implementing repository.
+in PR descriptions/comments, with ad hoc scripts created outside git checkouts.
