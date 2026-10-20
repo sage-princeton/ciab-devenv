@@ -75,6 +75,24 @@ class FixtureTests(unittest.TestCase):
             self.request("/v2/pods/example")
         self.assertEqual(failure.exception.code, 503)
 
+    def test_runpod_lists_pages_and_keeps_terminated_billing(self):
+        self.request("/cloud", {"pods": {
+            "a": {"live": {"id": "a", "env": {"OWNER": "one"}}},
+            "b": {"live": {"id": "b", "env": {"OWNER": "two"}}},
+            "gone": {"billing": {"totalAmount": 2}}}})
+        first = self.request("/v2/pods?limit=1")
+        self.assertEqual(first["pods"], [{"id": "a", "env": {"OWNER": "one"}}])
+        self.assertTrue(first["pagination"]["hasNextPage"])
+        last = self.request("/v2/pods?limit=1&cursor=" + first["pagination"]["nextCursor"])
+        self.assertEqual(last["pods"][0]["id"], "b")
+        self.assertEqual(last["pagination"], {"hasNextPage": False, "nextCursor": None})
+        billed = self.request("/v2/billing/pods?podId=gone&startTime=start&endTime=end&bucketSize=hour")
+        self.assertEqual(billed["records"][0]["totalAmount"], 2)
+        for query in ("limit=0", "limit=1001", "cursor=invalid", "cursor=-1"):
+            with self.assertRaises(urllib.error.HTTPError) as failure:
+                self.request("/v2/pods?" + query)
+            self.assertEqual(failure.exception.code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

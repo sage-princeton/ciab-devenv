@@ -114,6 +114,19 @@ class Server(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         query = {key: values[0] for key, values in parse_qs(url.query).items()}
         pods = self.cloud(db).get("pods", {})
+        if url.path == "/v2/pods":
+            try:
+                limit, offset = int(query.get("limit", "1000")), int(query.get("cursor", "0"))
+                if not 1 <= limit <= 1000 or offset < 0:
+                    raise ValueError("invalid pagination")
+            except ValueError:
+                return self.respond(422, {"error": "invalid pagination"})
+            live = [pod["live"] for _, pod in sorted(pods.items()) if pod.get("live")]
+            following = offset + limit
+            more = following < len(live)
+            return self.respond(200, {"pods": live[offset:following],
+                                      "pagination": {"hasNextPage": more,
+                                                     "nextCursor": str(following) if more else None}})
         if url.path.startswith("/v2/pods/"):
             pod = pods.get(url.path.removeprefix("/v2/pods/"))
             return self.respond(200, pod["live"]) if pod and pod.get("live") else self.respond(404, {"error": "pod missing"})
