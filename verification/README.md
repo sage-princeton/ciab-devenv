@@ -5,7 +5,7 @@ It contains no PR-specific scenarios, acceptance criteria or evidence files.
 Create those temporarily outside git checkouts and describe them in the
 implementing PR. Small scripts can be included directly in its description.
 
-The runner mounts this package read-only at `/devenv/verification`. Its existing
+Provisioning copies this package root-owned at `/devenv/verification`. Its existing
 Python path makes `from verification.sdk import ...` available to caller scripts.
 No service or model call runs merely by importing `verification.sdk`.
 
@@ -24,7 +24,7 @@ source capability. These helpers do not decide feature acceptance: the caller
 supplies the scenario and its assertions.
 
 Generated drop-ins, state, command logs and trace metadata live under the
-runner's `CIAB_RUN_DIR` in the instance's `/work` volume. Each case gets a distinct
+command's `CIAB_RUN_DIR` under `/work` on the machine. Each case gets a distinct
 session suffix. Keep raw sessions and credentials private; inspect and sanitize
 evidence before adding it to a PR.
 
@@ -32,7 +32,7 @@ evidence before adding it to a PR.
 
 Create a temporary input directory outside all repositories. Write the scenario
 script there, importing helpers from `verification.sdk`, then run it through the
-selected instance. `--input` mounts that directory read-only at `/input`:
+selected instance. `--input` copies that directory root-owned at `/input`:
 
 ```sh
 direnv exec . ./devctl --name sdk exec --input /private/path/to/temporary-input python /input/check.py

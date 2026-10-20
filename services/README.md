@@ -14,7 +14,7 @@ the stack and configure clients.
 
 | File | Responsibility |
 | --- | --- |
-| `runner.py` | Unprivileged execution, local CA/AWS setup, persistent drop-in staging, process timeout, redacted logs and report metadata |
+| `machine_job.py` | Bounded execution as ubuntu, production systemd run monitoring, timeout/interruption cleanup and sanitized reports |
 | `check_services.py` | Infrastructure connectivity/authentication diagnostics and fixture-control commands |
 | `Caddyfile` | Local HTTPS routing for Langfuse, cost and protocol fixtures |
 | `cost.py` | HTTP/API Gateway adapter loading the selected checkout's actual cost Lambda |
@@ -23,8 +23,9 @@ the stack and configure clients.
 | `mailbox_cli.py` | Downloadable CLI reading caller-provisioned mailbox authentication |
 | `machine_setup.py` | Local CA/SSM setup and invocation of production install/configure hooks with caller-supplied inputs |
 
-Compose mounts these files read-only. Restart a long-running service after
-changing its Python code; new runners load code on each execution. The cost
+Compose mounts fixture code read-only. Restart a service container after changing
+its Python code. Provisioning copies machine adapters and reusable helpers to
+root-owned `/devenv`; reprovision after changing them. The cost
 adapter requires its Lambda to exist in the selected stack; absence is reported
 as unavailable. It does not substitute synthetic costs.
 
@@ -35,8 +36,12 @@ the caller; fixtures do not model IAM, actual compute, vendor OAuth or delivery.
 Runpod's hardcoded hostname resolves locally only inside the instance network,
 unless the explicit live override is selected.
 
-Execution evidence lives in `/work/reports/<id>`; command workspaces live in
-`/work/runs/<id>` or `/work/dropins/<name>`. A zero exit code records command
+Machine evidence lives in `/var/lib/ciab/reports/<id>` and is cached on the host
+under the instance's `reports/<id>`. Generic command artifacts live in `/work/runs/<id>`.
+The production workspace is `/srv/crux-run/run-harness/workspace`, with state in
+`/srv/crux-run/state`. `machine_setup.py` invokes upstream install/configure hooks;
+its systemd override adds local service settings without replacing production
+ExecStart, user, restart policy or sandbox settings. A zero exit code records command
 success, not feature acceptance. Reports export sanitized logs and metadata;
 the caller inspects artifacts and records assertions in the implementing PR.
 

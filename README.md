@@ -1,218 +1,184 @@
 # CRUX local development environment
 
-OrbStack infrastructure for running `crux-in-a-box` worktrees with real provider
-inference, local services, disposable workspaces and observable execution.
+Run a selected `crux-in-a-box` worktree on an **isolated OrbStack Ubuntu 24.04
+machine**, installed by CRUX's production provisioning scripts. Langfuse, storage
+and service fixtures run in local containers. All inference uses the real model
+provider with a dedicated test key.
 
-This repository supplies the environment. **Feature scenarios, acceptance
-criteria and assertions belong in the implementing `crux-in-a-box` PR descriptions
-or comments.** Create PR-specific verification scripts and inputs temporarily
-outside git checkouts; do not commit them anywhere. Reusable helper methods live
-in `verification/`. Agents and humans use this environment to carry out those
-scenarios and inspect the results. This repo's tests cover its own orchestration
-and fixtures; normal CRUX unit/regression tests stay with the product code.
+**Start here:** follow the runbook below to provision a box and launch CRUX.
+`run` starts the production `crux-sdk-run` systemd service. There is no container
+execution path. `down` stops both the machine and its service containers while
+preserving evidence and data.
 
-**Start here:** the runbook below starts the local stack and launches a CRUX.
-Use [AGENTS.md](AGENTS.md) for agent workflow and evidence requirements.
+This repository owns infrastructure, reusable fixtures, execution and observation.
+Feature scenarios, acceptance criteria, rerun instructions and validation evidence
+belong in implementing **CRUX PR descriptions/comments**. Create PR-specific
+scripts and drop-ins temporarily outside git checkouts; do not commit them anywhere.
+Reusable helpers live in `verification/`. See [AGENTS.md](AGENTS.md) for agent guidance.
 
 | Directory | Purpose |
 | --- | --- |
-| [ciab_devenv/](ciab_devenv/README.md) | Host CLI, instance configuration, input staging and machine orchestration |
-| [services/](services/README.md) | Container/machine adapters, local protocol fixtures and execution reports |
+| [ciab_devenv/](ciab_devenv/README.md) | Host CLI, private configuration, staging and machine lifecycle |
+| [services/](services/README.md) | Production provisioning adapter, execution reports and local protocol fixtures |
 | [verification/](verification/README.md) | Reusable SDK execution, state/trace inspection and upstream check helpers |
-| [images/](images/README.md) | Runner image and dependency/build boundaries |
-| [tests/](tests/README.md) | Tests of this environment's behavior |
+| [tests/](tests/README.md) | Tests of the environment's orchestration and fixtures |
 
 ## Developer runbook: start a local CRUX
 
-The result is a local OrbStack stack, a CRUX running against your chosen worktree,
-and inspectable workspace/state/logs/traces. Scenario definitions and success
-criteria come from the `crux-in-a-box` implementation PR.
+Prerequisites: macOS, OrbStack running, Docker Compose v2, Python 3.11+, Git,
+OpenSSL and direnv. Use a CRUX worktree containing SDK provisioning
+(`src/ec2-workspaces/scaffolds/sdk.sh`, merged in CRUX PR #23).
 
-1. **Prepare the inputs.** Start OrbStack and open a shell in `ciab-devenv`.
-   Select the implementation PR's worktree and prepared SDK drop-in. Set the two
-   paths below to your local paths. Follow that drop-in's `OPERATOR_GUIDE.md` to
-   resolve placeholders and configure its declared tools/services. The upstream
-   `src/sdk-scaffold/README.md` describes the drop-in layout. For Codex in this
-   unprivileged container, select `sandbox = "full-access"` in the upstream
-   drop-in: the container supplies the isolation, as in the SDK's Docker adapter.
-   Set bounded run budgets in the drop-in and wire proprietary integrations to
-   the [local fixtures](#local-services-and-fixtures) unless explicitly testing
-   a live service.
+1. **Prepare a single PR worktree and drop-in.** Follow its `OPERATOR_GUIDE.md`
+   and the upstream SDK README. Resolve placeholders, set bounded budgets, and
+   configure integrations for local fixtures. Codex can use the production
+   `sandbox = "workspace-write"`; provisioning checks sandboxed shell execution
+   and file writes. Inputs and feature-specific checks stay outside git.
 
    ```sh
-   CRUX_WORKTREE=/absolute/path/to/crux-in-a-box-worktree
-   CRUX_DROPIN=/absolute/path/to/that-prs-prepared-drop-in
+   CRUX_WORKTREE=/absolute/path/to/crux-worktree
+   CRUX_DROPIN=/absolute/path/to/prepared-drop-in
+   cd /absolute/path/to/ciab-devenv
    ```
 
-2. **Set credentials.** Put your dedicated test key in the ignored `.envrc` as
-   `export OPENAI_API_KEY=...`, then run `chmod 600 .envrc` and `direnv allow`.
-   The commands below use `direnv exec .` so they also work without a shell hook.
+2. **Set credentials.** Put `export OPENAI_API_KEY=...` in the ignored `.envrc`,
+   run `chmod 600 .envrc`, then `direnv allow`. Use a dedicated test key.
+   Defaults are `CRUX_MODEL=gpt-5.4-mini` and `CRUX_REASONING_EFFORT=low`;
+   explicit environment overrides apply on provisioning. Never paste keys in
+   commands, reports or PRs.
 
-3. **Stand up and check the local instance.** This builds the selected source's
-   runner and starts Langfuse, storage and service fixtures. The probe makes one
-   real SDK call and one real Codex turn using the configured model.
+3. **Start and provision.** This starts the service stack, creates an isolated
+   Ubuntu machine, copies the selected tracked source, and invokes production
+   `install-run.sh` and `configure-run.sh`. Configuration performs real SDK and
+   Codex inference probes and installs the systemd unit without starting CRUX.
+   Allow several minutes for a fresh installation.
 
    ```sh
-   direnv exec . ./devctl --name sdk bootstrap --source "$CRUX_WORKTREE"
-   direnv exec . ./devctl --name sdk doctor
-   direnv exec . ./devctl --name sdk probe
-   direnv exec . ./devctl --name sdk check --drop-in "$CRUX_DROPIN" --run local-research
+   direnv exec . ./devctl --name sdk bootstrap --source "$CRUX_WORKTREE" --drop-in "$CRUX_DROPIN"
+   ./devctl --name sdk doctor
+   ./devctl --name sdk check
    ```
 
-4. **Kick off the CRUX run.** This runs in the foreground; the terminal prints
-   its output and report location when it exits. The default wall limit is 900
-   seconds, including the time allowed for the command to finish.
+   Optional `--manifest /path/provision.json` and
+   `--secrets-json /private/path/run-secrets.json` supply production provisioning
+   inputs supported by the selected CRUX revision. The inherited OpenAI key is
+   included automatically. A failed probe fails provisioning; inspect the report
+   and private `/var/log/crux-agent-probe*.log` on the machine.
+
+4. **Start CRUX.** The command starts and observes `crux-sdk-run` in the
+   foreground. It collects the journal, exit status and workspace file hashes.
+   The default wall limit is 900 seconds. Timeout or Ctrl-C stops the service.
 
    ```sh
-   direnv exec . ./devctl --name sdk run --drop-in "$CRUX_DROPIN" --run local-research --timeout 900
+   ./devctl --name sdk run --timeout 900
    ```
 
-5. **Observe and evaluate.** While it runs, use a second terminal for `status`,
-   service `logs`, fixture controls and Langfuse at `http://localhost:23100`.
-   Filter Langfuse by the run/session name `ciab-sdk-local-research`. The local
-   login/password location is documented below. After the command exits:
+5. **Observe and evaluate.** In another terminal use `status`, `logs`, or the
+   fixture controls below. Langfuse is at `http://localhost:23100`, with session
+   name `ciab-sdk`. Login is `developer@ciab.test`; the generated password is in
+   the instance's private `instance.json` (do not print it in agent logs).
 
    ```sh
    ./devctl --name sdk report
-   ./devctl --name sdk exec ls -la /work/dropins/local-research/drop-in/workspace
-   ./devctl --name sdk exec cat /work/dropins/local-research/state/state.json
+   ./devctl --name sdk exec cat /srv/crux-run/run-harness/workspace/DONE.txt
+   ./devctl --name sdk exec cat /srv/crux-run/state/state.json
+   ./devctl --name sdk report REPORT_ID --output /tmp/ciab-report
    ```
 
-   Apply the implementation PR's assertions to the actual artifacts and service
-   behavior. `report latest` selects the most recent command; save its printed
-   run ID to retrieve that specific report after other commands.
+   Apply the PR's assertions to actual artifacts, traces and service behavior.
+   `report latest` selects the latest command, including fixture controls; retain
+   a specific report ID when collecting evidence.
 
-6. **Resume, start fresh, or stop.** Repeat the same `run` command to resume its
-   persisted state; use another `--run` name for a fresh workspace. Ctrl-C stops
-   a foreground command; inspect its report before resuming. `down` stops local
-   containers and preserves data. Destructive cleanup is explicit:
+6. **Stop after testing.** Always shut down the instance after each PR, including
+   failed testing. Reports remain available from the host while OrbStack is off.
 
    ```sh
    ./devctl --name sdk down
-   # If this instance has an isolated provisioning machine:
-   orb stop ciab-sdk-run
-   ./devctl --name sdk reset --confirm sdk
+   ./devctl --name sdk machine status
+   ./devctl --name sdk report REPORT_ID
    ```
 
-For production provisioning/systemd behavior, use the separate
-[isolated machine workflow](#isolated-provisioning-machine).
+   `down` verifies that the named machine and containers are stopped. It preserves
+   the machine disk, volumes and reports. Use `up` to resume the environment;
+   CRUX starts only when you call `run`. Repeat `run` to resume its persisted
+   scaffold state. Use a new instance name and port for an independent run.
 
-## Prerequisites and secrets
+## Source changes and generic commands
 
-Use macOS with OrbStack running, Docker Compose v2, Python 3.11+, Git, OpenSSL,
-and a `crux-in-a-box` worktree containing the implementation under test.
+Source is copied into root-owned `/source` from **tracked files, including local
+edits**; `.git`, ignored/untracked files and `.env*` are excluded. Add intended new
+source files to the Git index before testing. The production scaffold is installed
+at `/opt/crux-sdk-scaffold`; the agent runs as `ubuntu`. No source checkout, host
+home directory, Docker socket, or SSH agent is shared with the machine.
 
-Manage secrets with direnv: export a dedicated, low-budget `OPENAI_API_KEY` from
-`.envrc`, then run `direnv allow`. `.envrc`, `.envrc.*` and `.direnv/` are ignored,
-excluded from builds, and never mounted in runners. `devctl` consumes inherited
-environment variables. Outside a direnv-enabled shell, prefix commands with
-`direnv exec .`.
-
-Defaults are `CRUX_MODEL=gpt-5.4-mini` and `CRUX_REASONING_EFFORT=low`; override
-these in `.envrc`. All inference uses the real provider. The selected model
-supports tools, images and low effort; see the
-[official model documentation](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
-The upstream SDK currently determines which providers are supported.
-
-## Start and inspect
+Reprovision after changing source, dependencies, drop-in configuration, model
+settings or service overrides. This retains the run workspace and state; it does
+not reset a completed run. Use a fresh named instance for fresh acceptance runs.
+Execution refuses if the selected source no longer matches the provisioning receipt.
 
 ```sh
-./devctl --name sdk bootstrap --source /path/to/crux-worktree
-./devctl --name sdk doctor
-./devctl --name sdk status
-./devctl --name sdk probe
+direnv exec . ./devctl --name sdk provision --drop-in "$CRUX_DROPIN"
+./devctl --name sdk select --source /path/to/another-pr-worktree
+direnv exec . ./devctl --name sdk provision --drop-in /path/to/that-pr-drop-in
 ```
 
-`bootstrap` builds the runner, starts services and checks connectivity. `probe`
-invokes the selected scaffold's own minimal SDK/Codex probe. `./devctl --usage`
-provides the full command reference. Docker operations explicitly select the
-`orbstack` context without changing your global context.
+`select` records one worktree and invalidates the old provisioning receipt. It
+never combines PR revisions. There is no `build` command or runner image.
 
-Langfuse is at `http://localhost:23100`. Its login is `developer@ciab.test`; the
-generated password is in `~/.local/state/ciab-devenv/sdk/instance.json`.
-Use another `--name` and `--port` for an independent environment.
-
-Source is a read-only snapshot of **tracked files, including local edits**.
-Ignored/untracked files and `.git` are excluded. Add intended new source files
-to Git's index before testing. Code is refreshed before execution; rebuild after
-dependency changes with `build`.
-
-To select another single PR stack, retaining services and prior evidence:
-
-```sh
-./devctl --name sdk select --source /path/to/another-crux-worktree
-```
-
-Selection refuses while a runner is active, rebuilds dependencies, and reloads
-the cost service. It never combines PR revisions.
-
-## Execute caller-owned work
-
-Run any implementation command against `/source`, or stage an additional input
-directory read-only at `/input`:
+`exec` executes arbitrary commands as `ubuntu` on the same provisioned machine,
+with its installed SDK environment, local service credentials and writable `/work`.
+`--input` copies a temporary directory read-only to `/input`. Staging excludes
+`.env*`, `.git`, `.direnv`, `.venv`, `.ssh`, `.aws`, Python caches and symlinks.
+A later staged input replaces `/input`.
 
 ```sh
 ./devctl --name sdk exec python -m crux_scaffold --help
-./devctl --name sdk exec --input /path/to/pr-test-inputs python /input/check.py
-./devctl --name sdk check --drop-in /path/to/drop-in --run research
-./devctl --name sdk run --drop-in /path/to/drop-in --run research
+./devctl --name sdk exec --input /tmp/pr-verification python /input/check.py
+./devctl --name sdk exec python -m verification.offline
+./devctl --name sdk probe --timeout 180
 ```
 
-`exec` runs as an unprivileged user in a disposable container with writable
-`/work`. Its command, output, exit code and source revision are recorded.
-Additional Python tools can be installed into a caller-chosen `/work` or `/tmp`
-directory. Test dependencies and test commands are owned by the implementation
-PR, not by this environment.
+`check` checks the installed drop-in; `probe` runs the production SDK/Codex probe
+again. Both use the provisioned environment. Test tools pytest, Ruff and ShellCheck
+are installed for generic verification. `machine exec -- COMMAND` is an explicit
+root diagnostic escape hatch, with no timeout or evidence wrapper. Prefer `exec`
+for tests and `run` for end-to-end CRUX execution.
 
-`run` and `check` invoke the real scaffold CLI. They copy the supplied drop-in to
-`/work/dropins/research/drop-in`, with state in the sibling `state` directory.
-On subsequent calls configuration is refreshed while the existing workspace and
-state are retained. Use a new run name for a fresh workspace. Keeping state
-outside the drop-in also keeps generated Codex files out of drop-in validation.
-
-Input staging excludes `.env*`, `.git`, `.direnv`, `.venv`, `.ssh`, `.aws`, Python
-caches and symlinks. Stage only the directory needed by the command.
-
-Execution defaults to a 15-minute wall limit; use `--timeout` on `exec`, `run` or
-`check` to override it. Runners have memory/CPU/process limits and no host Docker
-socket, SSH agent or home-directory mount. Scaffold budgets come from the
-caller-supplied drop-in. Reported Langfuse spend can lag provider billing.
+Mutating/execution commands are serialized per instance. Fixture controls, status,
+logs and reports remain available during a run. Interrupt a foreground command
+before invoking `down`. A machine started by a root diagnostic command is also
+stopped by `down`.
 
 ## Local services and fixtures
 
 | Component | Provided behavior |
 | --- | --- |
-| SDK/Codex | Actual source and dependencies from the selected worktree |
+| Run box | Isolated Ubuntu 24.04, production SDK installer/configuration/systemd service |
+| SDK/Codex | Selected source, actual provider inference, production sandbox |
 | Langfuse | Web/worker, PostgreSQL, ClickHouse, Redis and S3 storage |
-| Cost tracker | Actual selected checkout's Lambda behind a local HTTP adapter |
+| Cost tracker | Selected checkout's actual Lambda behind an HTTP adapter; unavailable when absent |
 | Artifact storage | Local S3-compatible `storage:9000`, bucket `run-archives` |
-| Steering fixture | Stateful HTTP service and the Slack MCP tool/CSV contract |
-| Mailbox fixture | Authenticated inbox and a downloadable CLI |
-| Parameter Store fixture | The GetParameter subset used by box configuration |
-| Cloud resource fixtures | STS identity, Cost Explorer, EC2 listing and Runpod pod/billing HTTP subsets |
-| Run box | Optional isolated Ubuntu machine invoking production provisioning |
+| Steering fixture | Stateful HTTP service and Slack MCP tool/CSV contract |
+| Mailbox fixture | Authenticated inbox and downloadable CLI |
+| Parameter Store fixture | GetParameter subset used by production configuration |
+| Cloud fixtures | STS identity, Cost Explorer, EC2 listing and Runpod pod/billing subsets |
 
-Container images and the runner base are pinned by digest. SDK requirements come
-from the selected source. OS packages/transitive Python dependencies can change
-on a clean rebuild; the prototype is not a fully locked distribution.
+Container images are pinned by digest. Production provisioning determines SDK,
+OS and tool installation; this is not a fully locked distribution. Machines have
+2 CPUs and 4 GiB RAM and still share OrbStack's Linux kernel. This does not prove
+EC2, IAM or real GPU behavior.
 
-Local HTTPS uses an instance certificate trusted in runners/machines; macOS trust
-is untouched. Runner environment variables supply Langfuse, cost and fixture
-endpoints/credentials. S3 uses access ID `ciab`, the generated
-`CIAB_STORAGE_PASSWORD`, and an explicit caller-configured local AWS profile.
-No host AWS profile is mounted. Runners provide the explicit `ciab-local` profile
-for local STS/SSM/Cost Explorer/EC2 endpoints and `ciab-storage` for local S3.
+Instance TLS trust and hostname mappings apply only inside the machine and
+service network. macOS trust/DNS are unchanged. `up` refreshes container addresses
+on the machine after restart. AWS uses explicit local `ciab-local` and
+`ciab-storage` profiles, never host profiles. S3 access ID is `ciab` and its secret
+is the generated `CIAB_STORAGE_PASSWORD` in the machine's environment.
 
-The steering MCP server is `/devenv/services/slack_mcp.py`. Declare it in the
-upstream drop-in with `CIAB_FIXTURE_URL`, `CIAB_FIXTURE_TOKEN` and `SSL_CERT_FILE`
-passed through. The fixture supports channel/thread messages, retained duplicate
-identities, injected HTTP errors and an inspectable state. It is not Slack itself.
-
-The mailbox CLI is served at `https://fixtures.test/downloads/mailbox`; it reads
-`auth.json` in `CIAB_MAILBOX_HOME`, containing a fixture URL and token. Upstream
-provisioning manifests own its checksum, installation and authentication checks.
-The SSM fixture accepts only local credentials (`CIABLOCAL`) and the fixed
-`/crux/local/system/env` parameter; it does not implement IAM/signature validation.
+Slack/email steering is unchanged. Declare `/devenv/services/slack_mcp.py` in the
+upstream drop-in, using `/opt/crux-sdk-scaffold/.venv/bin/python` and passing
+`CIAB_FIXTURE_URL`, `CIAB_FIXTURE_TOKEN` and `SSL_CERT_FILE`. The fixture supports
+channel/thread messages, retained duplicate identities and injected HTTP errors.
+It is a limited protocol fixture, not Slack itself.
 
 ```sh
 ./devctl --name sdk fixture show
@@ -221,103 +187,67 @@ The SSM fixture accepts only local credentials (`CIABLOCAL`) and the fixed
 ./devctl --name sdk fixture recover slack
 ```
 
-Authenticated fixture routes expose `/messages`, `/mail`, `/state`, `/reset` and
-`/fault`. The `/fault` body selects `service` and HTTP `status` (zero recovers).
-`POST /cloud` replaces caller-owned cloud fixture state: `account`,
-`aws_billing` (tag to Cost Explorer groups), `instances` (objects with `id` and
-`tag`), and `pods` (ID to `live` pod response and optional `billing` amounts).
-An empty fixture means unknown billing/no configured resources. It never creates
-real cloud resources. Failures for `aws` and `runpod` use the same `/fault` API.
+The mailbox CLI is served at `https://fixtures.test/downloads/mailbox`. It reads
+`auth.json` in `CIAB_MAILBOX_HOME` with the fixture URL and token. Caller manifests
+own its installation/checksum/authentication when supported by the CRUX revision.
+No interactive email MCP has been added.
 
-The SDK currently hardcodes Runpod's hostname, so the instance's Docker DNS maps
-`api.runpod.io` to its local TLS fixture. This mapping is limited to that network;
-host DNS and trust are unchanged. Set `CIAB_USE_LIVE_RUNPOD=1` with an explicit
-`RUNPOD_API_KEY`, then re-run `up`, to remove that local mapping for live reads.
-
-Real Slack/Gmail OAuth, email delivery, AWS IAM and GPU provisioning require
-separate upstream integration validation; the fixture does not establish them.
+Authenticated fixture routes are `/messages`, `/mail`, `/state`, `/reset`, `/fault`
+and `/cloud`. `/fault` accepts `service` and HTTP `status` (zero recovers).
+`POST /cloud` replaces caller-owned `account`, `aws_billing`, `instances` and
+`pods` records. Fixtures never create cloud resources or forward vendor messages.
+The SSM fixture accepts local `CIABLOCAL` credentials and
+`/crux/local/system/env`; it does not implement IAM/signature validation.
 
 ## Optional live services
 
-Explicit overrides select individual services:
+Defaults are local except inference. Explicit per-service overrides apply during
+provisioning; there is no automatic production fallback:
 
 - `CIAB_LIVE_LANGFUSE_BASE_URL`, `CIAB_LIVE_LANGFUSE_PUBLIC_KEY`,
   `CIAB_LIVE_LANGFUSE_SECRET_KEY` select another Langfuse project.
-- `CIAB_LIVE_COST_TRACKER_URL`, `CIAB_LIVE_COST_TRACKER_TOKEN` select another cost
-  endpoint. The default local handler queries the selected Langfuse project.
-- Slack/mailbox integration endpoints and credentials are declared by the
-  upstream drop-in. Use dedicated test destinations and explicit authorization
-  before sending to actual recipients.
+- `CIAB_LIVE_COST_TRACKER_URL` and `CIAB_LIVE_COST_TRACKER_TOKEN` select another cost endpoint.
+- `CIAB_USE_LIVE_RUNPOD=1` plus `RUNPOD_API_KEY` removes the machine's local
+  `api.runpod.io` mapping and selects the real provider.
+- Slack/mailbox endpoints and credentials are owned by the drop-in. Actual
+  recipients require explicit authorization and dedicated test destinations.
 
-There is no automatic production fallback. Local services remain available when
-an individual client endpoint is overridden. Re-run `up` after changing service
-configuration.
+Reprovision after changing these settings. Local services remain available when
+one endpoint is overridden. Reported model spend may lag; use provider-side test
+budgets and bounded runs.
 
-## Isolated provisioning machine
+## Evidence, cleanup and migration
 
-The selected source must contain the SDK box provisioning scripts. Supply the
-implementation PR's drop-in, optional provisioning manifest and private per-run
-service credential bundle:
+Private host state is `~/.local/state/ciab-devenv/<name>`; `CIAB_STATE_ROOT`
+overrides the parent. Reports and sanitized logs are cached in `reports/<id>`.
+They record commits/local changes, commands, source/model settings, service
+selection, outcomes, timing and artifact hashes. A zero exit code is command
+success, not feature acceptance. Inspect actual artifacts and add assertions,
+trace locations and remaining coverage gaps to the implementing CRUX PR.
 
-```sh
-./devctl --name sdk machine create
-./devctl --name sdk machine provision --drop-in /path/to/drop-in --manifest /path/to/provision.json
-./devctl --name sdk machine exec -- systemctl start crux-sdk-run
-./devctl --name sdk machine exec -- systemctl status crux-sdk-run
-```
-
-`--secrets-json /private/path/run-secrets.json` optionally supplies the production
-secret-delivery format, including `SERVICE_AUTH`; the inherited OpenAI key is
-included automatically. Configuration uses the local SSM fixture and actual
-`install-run.sh`/`configure-run.sh`. The production configure hook performs its
-own probe and installs the systemd service without starting it. Existing run state
-and workspace are retained when reprovisioning; recreate the machine for a clean
-box. The caller owns launching the service and assessing its behavior.
-
-Machines have no Mac filesystem mounts or forwarded SSH agent. They still share
-OrbStack's Linux kernel. `machine exec` executes as root in this disposable box.
-
-## Evidence and cleanup
+The machine retains `/srv/crux-run/run-harness/workspace`, `/srv/crux-run/state`,
+`/work/runs/<id>`, `/var/lib/ciab/reports/<id>` and the systemd journal. `report`
+exports cached metadata/logs without starting the machine. Raw sessions, credentials
+and generated artifacts are not automatically exported. Review evidence before sharing.
 
 ```sh
-./devctl --name sdk report
-./devctl --name sdk report RUN_ID --output /tmp/ciab-report
 ./devctl --name sdk logs langfuse-worker
 ./devctl --name sdk down
+# Destructive: delete this machine, service volumes and private host state.
+./devctl --name sdk reset --confirm sdk
 ```
 
-Reports contain execution status, revision/local changes, command, model settings,
-service endpoints, duration and artifact hashes. They record process outcomes,
-not an acceptance verdict. Sanitized summaries/logs can be exported; raw sessions
-and generated artifacts stay in the `/work` volume and can be inspected via
-`exec`. Langfuse's UI exposes recorded observations. Machine commands use the
-production systemd journal and `/var/log/crux-*` logs.
-
-[AGENTS.md](AGENTS.md) requires all users to record assertions, outcomes, trace and
-artifact locations, and coverage gaps in the implementing PR's evidence. Review
-logs/artifacts for secrets before sharing; never commit raw sessions.
-
-Private host state is `~/.local/state/ciab-devenv/<name>` (`CIAB_STATE_ROOT`
-overrides its parent). `down` preserves data. `reset --confirm NAME` deletes only
-that named local stack and its state. Remove its separate machine with
-`machine delete --confirm NAME` after inspecting/exporting evidence.
-
-After testing each CRUX PR, export the evidence you need, run `down`, and stop
-its isolated machine with `orb stop ciab-NAME-run` if one was created. Do this
-after failed or interrupted testing too. Check `docker --context orbstack ps`
-and `orb list` to confirm that the instance has no running containers or machine.
-Stopping preserves evidence; resetting volumes or deleting the machine discards
-it. Leave services running only when the user explicitly requests it.
+For old container-based instances, use a fresh name/port or intentionally reset
+before provisioning. The removed runner's legacy Docker work volume is not
+migrated or automatically deleted; preserve/export any old evidence before
+manually discarding that volume. Legacy machine subcommands `create`, `provision`
+and `delete` are replaced by `bootstrap`/`provision` and confirmed `reset`.
 
 ## Environment development
 
-```sh
-./devctl --name sdk exec python -m unittest discover -s /devenv/tests -v
-./devctl --name sdk exec ruff check /devenv/ciab_devenv /devenv/services /devenv/verification /devenv/tests --no-cache
-```
+Run the commands in [tests/README.md](tests/README.md), then practically exercise
+changed startup/execution/recovery/cleanup paths. Keep feature-specific scripts
+outside git. Future scaffold adapters can reuse local services, machine lifecycle
+and reporting; the SDK adapter currently invokes production provisioning.
 
 Prototype tracked by [AE-269](https://linear.app/agent-evals/issue/AE-269).
-The shared services and execution/reporting layers are separate from the SDK
-launch adapter. Future AgentRQ-hosted Claude Code/Codex runners can add adapters
-and Compose profiles while reusing these services. Their feature scenarios stay
-in PR descriptions/comments, with ad hoc scripts created outside git checkouts.

@@ -141,43 +141,6 @@ services:
       - ./services:/devenv/services:ro
       - ${CIAB_SOURCE}/lambda:/source/lambda:ro
       - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro
-  runner:
-    profiles: [runner]
-    build:
-      context: .
-      dockerfile: images/runner.Dockerfile
-      additional_contexts:
-        scaffold: ${CIAB_SOURCE}/src/sdk-scaffold
-    init: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    mem_limit: 4g
-    cpus: 4
-    pids_limit: 512
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      CIAB_PROJECT: ${CIAB_PROJECT}
-      CRUX_MODEL: ${CRUX_MODEL}
-      CRUX_REASONING_EFFORT: ${CRUX_REASONING_EFFORT}
-      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-      COST_TRACKER_URL: ${COST_TRACKER_URL}
-      COST_TRACKER_TOKEN: ${COST_TRACKER_TOKEN}
-      CIAB_FIXTURE_URL: https://fixtures.test
-      CIAB_FIXTURE_TOKEN: ${CIAB_FIXTURE_TOKEN}
-      SSL_CERT_FILE: /certs/server.crt
-      REQUESTS_CA_BUNDLE: /certs/server.crt
-      CIAB_STORAGE_PASSWORD: ${CIAB_PASSWORD}
-      RUNPOD_API_KEY: ${RUNPOD_API_KEY}
-    volumes:
-      - ./services:/devenv/services:ro
-      - ./ciab_devenv:/devenv/ciab_devenv:ro
-      - ./verification:/devenv/verification:ro
-      - ./tests:/devenv/tests:ro
-      - ${CIAB_SOURCE}:/source:ro
-      - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro
-      - work:/work
 
 volumes:
   postgres:
@@ -185,4 +148,3 @@ volumes:
   clickhouse:
   storage:
   fixtures:
-  work:

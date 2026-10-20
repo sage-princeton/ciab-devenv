@@ -19,7 +19,7 @@ environment = {
 }
 commands = [
     (sdk, ["ruff", "check", ".", "--no-cache"]),
-    (sdk, ["python", "-m", "pytest", "-q", "-o", "cache_dir=/tmp/pytest-cache"]),
+    (sdk, ["python", "-m", "pytest", "tests", "-q", "-o", "cache_dir=/tmp/pytest-cache"]),
     (
         sdk,
         [

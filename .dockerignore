@@ -1,9 +1,0 @@
-.git
-.envrc
-.envrc.*
-.direnv
-.venv
-.runtime
-reports
-**/__pycache__
-docs/superpowers

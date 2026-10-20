@@ -13,6 +13,7 @@ Reusable methods belong in [verification/](../verification/README.md).
 | File | Coverage |
 | --- | --- |
 | `test_environment.py` | Tracked local edits, credential exclusions, named-instance isolation, private permissions, input staging and explicit endpoint overrides |
+| `test_machine.py` | Provisioning capability/source drift, stopped-machine handling, evidence retrieval and credential redaction |
 | `test_fixtures.py` | HTTP authentication, injected failures/recovery, retained message identities and caller-configured cloud responses |
 
 Run from the repository root in a configured instance:
@@ -24,7 +25,7 @@ Run from the repository root in a configured instance:
 
 Host checks are `python3 -m unittest discover -s tests -v`,
 `python3 -m compileall -q ciab_devenv services verification tests`, and `shellcheck devctl`.
-The HTTP tests need permission to bind a local socket; use the runner when the
+The HTTP tests need permission to bind a local socket; use the provisioned machine when the
 host sandbox disallows it.
 
 For orchestration changes, also exercise the changed commands against OrbStack:

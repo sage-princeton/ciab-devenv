@@ -7,7 +7,7 @@ switch to another Docker engine or a cloud run box.
 The owner has authorized prototype changes and pushes directly on this repo's
 `main`. Changes in crux-in-a-box still require a worktree and that repo's guidance.
 Test one PR stack at a time. Select its worktree with `setup --source` or `select --source`; do not
-combine unrelated PRs to make a test pass. Rebuild when dependencies change.
+combine unrelated PRs to make a test pass. Reprovision after changing source, dependencies, model settings or service overrides.
 
 ## Development loop
 
@@ -31,8 +31,8 @@ tests here verify this environment's own orchestration and fixtures.
    scaffold behavior belongs in crux-in-a-box. Reuse production implementations.
 5. Record evidence and remaining gaps before reporting completion.
 6. After testing each PR, run `./devctl --name NAME down` and stop any associated
-   isolated machine with `orb stop ciab-NAME-run`, including after failures or
-   interruptions. Verify no containers or machines for that instance remain
+   isolated machine if shutdown failed (`orb stop ciab-NAME-run`), including after failures or
+   interruptions. `down` normally stops both the machine and containers. Verify no containers or machines for that instance remain
    running. Preserve reports and volumes unless intentionally discarding them;
    do not leave services running between PRs without the user's explicit request.
 
@@ -54,7 +54,7 @@ its unfinished upstream stories are complete.
 ## Credentials and containment
 
 The user manages secrets with direnv. `.envrc`, `.envrc.*` and `.direnv/` are
-ignored. Never print them, commit them, or include them in Docker build contexts.
+ignored. Never print them, commit them, or copy them into source/input snapshots.
 Use inherited environment variables; never source credentials through a shell
 constructed by Python. Check only whether required variables are present.
 
@@ -64,7 +64,8 @@ Reported Langfuse cost can lag; it is not a hard provider billing cap.
 
 Keep raw sessions and generated authentication state outside the checkout.
 Sanitize logs and scan files before commits or exports. Source and caller-supplied
-inputs are mounted read-only in runners. The run workspace is disposable.
+inputs are copied root-owned into the isolated Ubuntu machine; `ubuntu` cannot
+edit them. `run` starts the production systemd unit. The run workspace is disposable.
 Never expose the host Docker socket, SSH agent, home directory or cloud credentials
 to the test agent. OrbStack isolated machines still share its Linux kernel.
 
@@ -76,5 +77,5 @@ actual Slack/email recipients needs explicit authorization; local fixtures do no
 
 Run `python3 -m unittest discover -s tests -v`, `python3 -m compileall -q
 ciab_devenv services verification tests`, and exercise the changed environment commands. Run Ruff
-inside the runner. Exercise CLI behavior, startup and recovery after changes to
+inside the provisioned machine. Exercise CLI behavior, startup and recovery after changes to
 orchestration. Do not commit design conversation notes under `docs/superpowers/`.
