@@ -7,7 +7,7 @@ from pathlib import Path
 
 path = Path("/source/lambda/langfuse_cost_tracker/lambda_function.py")
 bundle = Path("/tmp/ciab-ca.pem")
-bundle.write_bytes(Path("/etc/ssl/certs/ca-certificates.crt").read_bytes() + b"\n" + Path("/certs/server.crt").read_bytes())
+bundle.write_bytes(Path("/etc/ssl/certs/ca-certificates.crt").read_bytes() + b"\n" + Path("/certs/ca.crt").read_bytes())
 os.environ["SSL_CERT_FILE"] = str(bundle)
 handler = None
 if path.is_file():

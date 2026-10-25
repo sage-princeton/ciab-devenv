@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .config import DEFAULT_SOURCE, ROOT, DevError, Environment, private_write, source_info
+from .config import DEFAULT_SOURCE, DevError, Environment, private_write, source_info
 from .machine import Machine, scrub, show_report
 
 
@@ -22,7 +22,7 @@ def execute(argv, *, env=None, timeout=None):
 
 def compose(instance, *args, timeout=None):
     return execute(['docker', '--context', 'orbstack', 'compose', '--project-name', instance.project,
-                    '--file', str(ROOT / 'compose.yaml'), *args], env=instance.process_env(), timeout=timeout)
+                    *[arg for path in instance.compose_files() for arg in ('--file', str(path))], *args], env=instance.process_env(), timeout=timeout)
 
 
 def runtime_ready():
@@ -34,7 +34,7 @@ def runtime_ready():
 
 
 def provisioning_arguments(parser):
-    parser.add_argument('--drop-in', type=Path, required=True, help='caller-supplied SDK drop-in; existing workspace/state are retained')
+    parser.add_argument('--drop-in', type=Path, help='caller-supplied drop-in (required for SDK); existing workspace/state are retained')
     parser.add_argument('--manifest', type=Path, help='optional production provisioning manifest')
     parser.add_argument('--secrets-json', type=Path, help='optional private production secret bundle outside git')
 
@@ -49,7 +49,9 @@ def parser():
     for command in ('setup', 'bootstrap'):
         s = sub.add_parser(command, help='configure only' if command == 'setup' else 'configure, start services and provision Ubuntu')
         s.add_argument('--source', type=Path, default=DEFAULT_SOURCE)
-        s.add_argument('--scaffold', choices=('sdk',), default='sdk')
+        s.add_argument('--scaffold', choices=('sdk', 'acp'), default='sdk')
+        s.add_argument('--platform', choices=('openai-agents', 'codex', 'claude'))
+        s.add_argument('--provider', choices=('direct', 'openrouter'), default='direct')
         s.add_argument('--port', type=int, default=23100)
         if command == 'bootstrap':
             provisioning_arguments(s)
@@ -63,6 +65,14 @@ def parser():
     for command in ('run', 'check', 'probe'):
         s = sub.add_parser(command, help='start and observe production crux-sdk-run' if command == 'run' else 'execute the installed scaffold ' + command)
         s.add_argument('--timeout', type=int, default=900)
+        if command == 'run':
+            group = s.add_mutually_exclusive_group()
+            group.add_argument('--prompt-file', type=Path, help='submit an ACP task from a text file')
+            group.add_argument('--task-id', help='observe an existing ACP task')
+    s = sub.add_parser('task', help='observe, reply to or cancel a local ACP task')
+    s.add_argument('action', choices=('show', 'reply', 'cancel'))
+    s.add_argument('task_id')
+    s.add_argument('--message-file', type=Path)
     s = sub.add_parser('exec', help='execute a command as ubuntu using the provisioned SDK environment')
     s.add_argument('--input', type=Path, help='copy a temporary directory read-only to /input')
     s.add_argument('--timeout', type=int, default=900)
@@ -114,7 +124,7 @@ def main(argv=None):
     operation_lock = None
     try:
         instance = Environment(args.name)
-        if args.command not in ('status', 'logs', 'fixture', 'report', 'machine'):
+        if args.command not in ('status', 'logs', 'fixture', 'report', 'machine', 'task'):
             instance.root.mkdir(parents=True, exist_ok=True, mode=0o700)
             operation_lock = os.fdopen(os.open(instance.root / 'operation.lock', os.O_CREAT | os.O_RDWR, 0o600), 'w')
             try:
@@ -122,9 +132,9 @@ def main(argv=None):
             except BlockingIOError:
                 raise DevError('Another environment command is running. Status, logs, reports and fixture controls remain available.') from None
         if args.command in ('setup', 'bootstrap'):
-            if not 1024 <= args.port <= 65535:
+            if not 1024 <= args.port <= 65534:
                 raise DevError('Choose a localhost port between 1024 and 65535.')
-            instance.setup(args.source, args.port, args.scaffold)
+            instance.setup(args.source, args.port, args.scaffold, args.platform, args.provider)
             print(f'Configured {instance.name}: {instance.source}; private state: {instance.root}')
             if args.command == 'setup':
                 return 0
@@ -175,14 +185,22 @@ def main(argv=None):
                 command.append(args.service)
             if args.command == 'logs':
                 result = subprocess.run(['docker', '--context', 'orbstack', 'compose', '--project-name', instance.project,
-                                         '--file', str(ROOT / 'compose.yaml'), *command], env=instance.process_env(),
+                                         *[arg for path in instance.compose_files() for arg in ('--file', str(path))], *command], env=instance.process_env(),
                                         text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 print(scrub(result.stdout, instance.process_env()))
                 return result.returncode
             return compose(instance, *command)
+        if args.command == 'task':
+            from .acp import task_control
+            return task_control(machine, args)
         if args.command in ('run', 'check', 'probe', 'exec'):
             if args.timeout < 1:
                 raise DevError('--timeout must be positive.')
+            if instance.scaffold.name == 'acp' and args.command in ('run', 'probe'):
+                from .acp import run_task
+                return run_task(machine, args)
+            if getattr(args, 'prompt_file', None) or getattr(args, 'task_id', None):
+                raise DevError('Task inputs require --scaffold acp.')
             command = getattr(args, 'argv', [])
             if command[:1] == ['--']:
                 command = command[1:]

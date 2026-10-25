@@ -6,7 +6,7 @@ and service fixtures run in local containers. All inference uses the real model
 provider with a dedicated test key.
 
 **Start here:** follow the runbook below to provision a box and launch CRUX.
-`run` starts the production `crux-sdk-run` systemd service. There is no container
+`run` starts the selected production systemd service; ACP mode submits and observes an AgentRQ task. There is no container
 execution path. `down` stops both the machine and its service containers while
 preserving evidence and data.
 
@@ -102,6 +102,44 @@ OpenSSL and direnv. Use a CRUX worktree containing SDK provisioning
    the machine disk, volumes and reports. Use `up` to resume the environment;
    CRUX starts only when you call `run`. Repeat `run` to resume its persisted
    scaffold state. Use a new instance name and port for an independent run.
+
+## AgentRQ / ACP runs
+
+Select `--scaffold acp --platform codex` or `--platform claude` at setup/bootstrap.
+ACP uses the selected worktree's production controller image and CLI/gateway pins.
+The controller runs locally in Compose; the vendor agent and ACP gateway run on
+isolated Ubuntu. The controller dashboard is `https://localhost:<port + 1>` using
+the instance CA. Its generated root login token is in private `instance.json`.
+Controller administrator credentials stay on the host.
+
+```sh
+direnv exec . ./devctl --name acp bootstrap --source "$CRUX_WORKTREE" --scaffold acp --platform codex --port 23200
+./devctl --name acp doctor
+./devctl --name acp run --prompt-file /private/path/task.txt --timeout 300
+./devctl --name acp task show TASK_ID
+./devctl --name acp task reply TASK_ID --message-file /private/path/reply.txt
+./devctl --name acp run --task-id TASK_ID --timeout 300
+./devctl --name acp task cancel TASK_ID
+./devctl --name acp down
+```
+
+Use `CRUX_MODEL` / `CRUX_REASONING_EFFORT` and the platform's test credential:
+`OPENAI_API_KEY` for Codex, `ANTHROPIC_API_KEY` for Claude. Claude requires an
+explicit model. `--provider openrouter` selects `OPENROUTER_API_KEY`; the model
+must then be an explicit provider model ID. No provider fallback occurs.
+`--drop-in` is optional in ACP mode; it stages caller files at
+`/srv/crux-run/run-harness`, with a writable `workspace/` directory. Tasks run
+from `/srv/crux-run`. Supply prompts as files outside the checkout.
+
+`probe` submits a bounded task through the real controller/gateway. `run` watches
+task state, not service exit: completed succeeds, blocked/rejected exits 3,
+timeout exits 124, interruption exits 130. The gateway is stopped after observation
+ends, including failure; timeout/interruption also reject the task. Unfinished
+tasks must be requeued with `--task-id` or cancelled before starting another.
+Requeueing starts a new agent session against the existing task and workspace;
+prior conversation context depends on what the vendor agent retrieves from AgentRQ. Task controls remain
+available from another terminal during a run. Reports include controller task IDs,
+status transitions and a reference to the machine journal/artifact snapshot.
 
 ## Source changes and generic commands
 

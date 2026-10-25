@@ -41,7 +41,7 @@ def main():
     data = json.loads(request.read_text())
     request.unlink()
     run_id, suite = data['run_id'], data['suite']
-    scaffold = get_scaffold(data.get('scaffold', 'sdk'))
+    scaffold = get_scaffold(data.get('scaffold', 'sdk'), data.get('platform'))
     output = Path('/var/lib/ciab/reports') / run_id
     output.mkdir(parents=True)
     run_dir = Path('/work/runs') / run_id
@@ -62,7 +62,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     data.update(started_at=datetime.now(timezone.utc).isoformat(timespec='microseconds'), status='running',
-                artifacts=scaffold.artifacts if suite == 'run' else str(run_dir),
+                artifacts=scaffold.artifacts if suite in ('run', 'snapshot') else str(run_dir),
                 state_dir=scaffold.state, coverage='Caller owns scenarios, assertions and acceptance interpretation.',
                 gaps=['Local fixtures do not establish vendor OAuth, delivery, AWS IAM or real GPU behavior.',
                       'OrbStack shares its Linux kernel; this does not validate EC2 or cloud resource provisioning.'])
@@ -71,7 +71,12 @@ def main():
     raw = output / 'output.raw'
     code = 2
     try:
-        if suite == 'run':
+        if suite == 'snapshot':
+            with raw.open('w') as stream:
+                subprocess.run(['journalctl', '--no-pager', '-o', 'cat', '-u', scaffold.service,
+                                '--since', data['argv'][0]], stdout=stream, stderr=subprocess.STDOUT, check=True)
+            code = 0
+        elif suite == 'run':
             data['command'] = ['systemctl', 'start', scaffold.service]
             subprocess.run(['systemctl', 'reset-failed', unit], check=False, capture_output=True)
             subprocess.run(data['command'], check=True)

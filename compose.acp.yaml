@@ -1,0 +1,35 @@
+services:
+  agentrq-data:
+    image: python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+    command: [python, -c, 'import os; os.chown("/_storage", 65534, 65534); os.chmod("/_storage", 448)']
+    volumes: [agentrq:/_storage]
+  agentrq:
+    image: ${CIAB_AGENTRQ_IMAGE}
+    platform: linux/${CIAB_AGENTRQ_ARCH}
+    pull_policy: never
+    depends_on:
+      agentrq-data: {condition: service_completed_successfully}
+    environment:
+      ENV: production
+      PORT: '2026'
+      AGENTRQ_BASE_URL: https://localhost:${CIAB_AGENTRQ_PORT}
+      AGENTRQ_DOMAIN: localhost
+      AGENTRQ_PROXY_DOMAIN: agentrq.test
+      AGENTRQ_COOKIE_SECURE: 'true'
+      AGENTRQ_SSL_ENABLED: 'false'
+      AGENTRQ_SQLITE_ENABLED: 'true'
+      AGENTRQ_SQLITE_DSN: /_storage/agentrq.db
+      AGENTRQ_AUTH_JWT_SECRET: ${CIAB_AGENTRQ_JWT_SECRET}
+      AGENTRQ_AUTH_WORKSPACE_TOKEN_KEY: ${CIAB_AGENTRQ_TOKEN_KEY}
+      AGENTRQ_AUTH_ROOT_LOGIN_ENABLED: 'true'
+      AGENTRQ_AUTH_ROOT_ACCESS_TOKEN: ${CIAB_AGENTRQ_ROOT_TOKEN}
+      AGENTRQ_SMTP_ENABLED: 'false'
+      AGENTRQ_SLACK_ENABLED: 'false'
+    volumes: [agentrq:/_storage]
+  edge:
+    ports: ['127.0.0.1:${CIAB_AGENTRQ_PORT}:443']
+    networks:
+      default:
+        aliases: [agentrq.test]
+volumes:
+  agentrq:

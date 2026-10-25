@@ -66,21 +66,27 @@ class Environment:
     @property
     def scaffold(self):
         from .scaffolds import get_scaffold
-        return get_scaffold(self.data.get("scaffold", "sdk"))
+        return get_scaffold(self.data.get("scaffold", "sdk"), self.data.get("platform"))
 
-    def setup(self, source: Path, port: int, scaffold="sdk") -> None:
+    def setup(self, source: Path, port: int, scaffold="sdk", platform=None, provider="direct") -> None:
         source = source.expanduser().resolve()
         from .scaffolds import get_scaffold
-        get_scaffold(scaffold).validate_source(source)
-        if self.data and (self.data["source"] != str(source) or self.data["port"] != port or self.scaffold.name != scaffold):
-            raise DevError("This instance already targets a source/port. Use another --name or reset this instance first.")
+        adapter = get_scaffold(scaffold, platform)
+        adapter.validate_source(source)
+        if scaffold == "sdk" and provider != "direct":
+            raise DevError("SDK requires the direct provider.")
+        if self.data and (self.data["source"] != str(source) or self.data["port"] != port or self.scaffold != adapter or self.data.get("provider", "direct") != provider):
+            raise DevError("This instance already targets a source/port/scaffold/platform/provider. Use another --name or reset this instance first.")
         if not self.data:
-            self.data = {"source": str(source), "port": port, "scaffold": scaffold,
+            self.data = {"source": str(source), "port": port, "scaffold": scaffold, "platform": adapter.platform, "provider": provider,
                          "langfuse_public_key": "pk-lf-" + secrets.token_hex(16),
                          "langfuse_secret_key": "sk-lf-" + secrets.token_hex(16),
                          "password": secrets.token_urlsafe(24), "salt": secrets.token_hex(32),
                          "encryption_key": secrets.token_hex(32),
                          "fixture_token": secrets.token_urlsafe(24), "cost_token": secrets.token_urlsafe(24)}
+        if scaffold == 'acp' and 'agentrq_root_token' not in self.data:
+            self.data.update(agentrq_root_token=secrets.token_urlsafe(32), agentrq_jwt_secret=secrets.token_hex(32),
+                             agentrq_token_key=secrets.token_hex(16))
         private_write(self.path, json.dumps(self.data, indent=2) + "\n")
         self.certificates()
         self.stage_source()
@@ -110,27 +116,39 @@ class Environment:
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
 
-    def certificates(self) -> None:
+    def certificates(self) -> bool:
         certs = self.root / "certs"
-        if (certs / "server.crt").exists() and "api.runpod.io" in (certs / "openssl.cnf").read_text():
-            return
+        if (certs / "ca.crt").exists() and (certs / "server.crt").exists():
+            return False
         certs.mkdir(parents=True, exist_ok=True, mode=0o700)
         config = """[req]
 distinguished_name=dn
-x509_extensions=extensions
 prompt=no
 [dn]
 CN=ciab-devenv local services
-[extensions]
+[ca]
 basicConstraints=critical,CA:TRUE
-keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
-subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.io,DNS:localhost,IP:127.0.0.1
+keyUsage=critical,keyCertSign,cRLSign
+[server]
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.io,DNS:localhost,DNS:agentrq.test,IP:127.0.0.1
 """
         private_write(certs / "openssl.cnf", config)
-        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "365",
-                        "-keyout", str(certs / "server.key"), "-out", str(certs / "server.crt"),
-                        "-config", str(certs / "openssl.cnf")], check=True, capture_output=True)
-        (certs / "server.key").chmod(0o600)
+        commands = [
+            ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "365", "-extensions", "ca",
+             "-keyout", "ca.key", "-out", "ca.crt", "-config", "openssl.cnf"],
+            ["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "server.key", "-out", "server.csr",
+             "-config", "openssl.cnf"],
+            ["x509", "-req", "-in", "server.csr", "-CA", "ca.crt", "-CAkey", "ca.key", "-CAcreateserial",
+             "-days", "365", "-extensions", "server", "-extfile", "openssl.cnf", "-out", "server.crt"],
+        ]
+        for command in commands:
+            subprocess.run(["openssl", *command], cwd=certs, check=True, capture_output=True)
+        for name in ("ca.key", "server.key"):
+            (certs / name).chmod(0o600)
+        return True
 
     def compose_env(self) -> dict[str, str]:
         d = self.data
@@ -151,7 +169,16 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
         for key in ("LANGFUSE_BASE_URL", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "COST_TRACKER_URL", "COST_TRACKER_TOKEN"):
             if os.environ.get("CIAB_LIVE_" + key):
                 result[key] = os.environ["CIAB_LIVE_" + key]
+        if self.scaffold.name == 'acp':
+            result.update(CIAB_AGENTRQ_IMAGE=d.get('agentrq_image', 'agentrq-not-provisioned'),
+                          CIAB_AGENTRQ_ARCH=d.get('agentrq_architecture', 'amd64'),
+                          CIAB_AGENTRQ_PORT=str(d['port'] + 1), CIAB_AGENTRQ_ROOT_TOKEN=d['agentrq_root_token'],
+                          CIAB_AGENTRQ_JWT_SECRET=d['agentrq_jwt_secret'], CIAB_AGENTRQ_TOKEN_KEY=d['agentrq_token_key'],
+                          CIAB_AGENTRQ_WORKSPACE_TOKEN=d.get('agentrq_workspace_token', ''))
         return result
+
+    def compose_files(self):
+        return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else [])]
 
     def process_env(self) -> dict[str, str]:
         env = dict(os.environ)
