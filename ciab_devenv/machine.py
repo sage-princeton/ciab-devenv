@@ -96,7 +96,8 @@ class Machine:
         if not self.receipt.exists():
             raise DevError('Provision this machine with a caller-supplied --drop-in first.')
         receipt = json.loads(self.receipt.read_text())
-        if receipt.get('scaffold', 'sdk') != self.instance.scaffold.name:
+        receipt_platform = receipt.get('platform', 'openai-agents' if receipt.get('scaffold', 'sdk') == 'sdk' else 'codex')
+        if (receipt.get('scaffold', 'sdk'), receipt_platform) != (self.instance.scaffold.name, self.instance.scaffold.platform):
             raise DevError('Selected scaffold changed since provisioning. Reprovision before testing.')
         if receipt['source'] != source_info(self.instance.source):
             raise DevError('Selected source changed since provisioning. Run provision --drop-in PATH before testing.')
@@ -125,7 +126,7 @@ from pathlib import Path
 v=json.loads(Path('/tmp/ciab-hosts.json').read_text())
 p=Path('/etc/hosts')
 lines=[s for s in p.read_text().splitlines() if '# ciab-services' not in s]
-lines += [v['edge']+' langfuse.test cost.test fixtures.test '+v['runpod']+' # ciab-services', v['storage']+' storage # ciab-services']
+lines += [v['edge']+' langfuse.test cost.test fixtures.test agentrq.test '+v['runpod']+' # ciab-services', v['storage']+' storage # ciab-services']
 p.write_text('\\n'.join(lines)+'\\n')
 ''')
 
@@ -133,7 +134,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         state = self.state()
         if state and state['state'] == 'running':
             try:
-                self.call('systemctl', 'stop', self.instance.scaffold.service, 'ciab-job-*.service', 'ciab-command-*.service', check=False)
+                self.call('systemctl', 'stop', self.instance.scaffold.service, 'crux-codex-live-trace.service', 'ciab-job-*.service', 'ciab-command-*.service', check=False)
             finally:
                 subprocess.run(['orb', 'stop', self.name], check=True)
 
@@ -145,8 +146,22 @@ p.write_text('\\n'.join(lines)+'\\n')
     def provision(self, args):
         from .cli import compose
         self.instance.scaffold.validate_source(self.instance.source)
-        if not os.environ.get('OPENAI_API_KEY'):
-            raise DevError('Production provisioning requires OPENAI_API_KEY from direnv for its live probes.')
+        scaffold = self.instance.scaffold
+        provider = self.instance.data.get('provider', 'direct')
+        key = 'OPENROUTER_API_KEY' if provider == 'openrouter' else ('ANTHROPIC_API_KEY' if scaffold.platform == 'claude' else 'OPENAI_API_KEY')
+        values = json.loads(args.secrets_json.read_text()) if args.secrets_json else {}
+        if os.environ.get(key):
+            values.setdefault(key, os.environ[key])
+        if not values.get(key):
+            raise DevError(f'Production provisioning requires {key} from direnv or --secrets-json for its live probes.')
+        if (scaffold.platform == 'claude' or provider == 'openrouter') and not os.environ.get('CRUX_MODEL'):
+            raise DevError('Set CRUX_MODEL explicitly for Claude Code or OpenRouter.')
+        if scaffold.name == 'sdk' and not args.drop_in:
+            raise DevError('SDK provisioning requires --drop-in PATH.')
+        runtime_pins = {}
+        if scaffold.name == 'acp':
+            from .agentrq import pins
+            runtime_pins = pins(self.instance.source)
         self.require_idle()
         self.receipt.unlink(missing_ok=True)
         source_revision = source_info(self.instance.source)
@@ -155,15 +170,34 @@ p.write_text('\\n'.join(lines)+'\\n')
             raise DevError('Source changed while staging. Retry provisioning after edits finish.')
         staging = self.instance.root / 'machine-input'
         shutil.rmtree(staging, ignore_errors=True)
-        stage_directory(args.drop_in, staging / 'drop-in')
+        if args.drop_in:
+            stage_directory(args.drop_in, staging / 'drop-in')
+        else:
+            (staging / 'drop-in/workspace').mkdir(parents=True)
         if args.manifest:
             shutil.copyfile(args.manifest, staging / 'provision.json')
-        inputs = {'drop_in': str(args.drop_in.resolve()), 'manifest': str(args.manifest.resolve()) if args.manifest else None,
+        inputs = {'drop_in': str(args.drop_in.resolve()) if args.drop_in else None, 'manifest': str(args.manifest.resolve()) if args.manifest else None,
                   'files': [{'path': str(file.relative_to(staging)), 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
                             for file in sorted(staging.rglob('*')) if file.is_file()]}
+        renewed_certificates = self.instance.certificates()
+        if renewed_certificates:
+            compose(self.instance, 'stop', 'edge')
+        if scaffold.name == 'acp':
+            from .agentrq import prepare_image
+            prepare_image(self.instance, runtime_pins)
         result = compose(self.instance, 'up', '-d', '--wait', '--wait-timeout', '300')
         if result:
             return result
+        if scaffold.name == 'acp':
+            from .agentrq import Client
+            for attempt in range(30):
+                try:
+                    values.update(Client(self.instance).bootstrap())
+                    break
+                except (DevError, OSError):
+                    if attempt == 29:
+                        raise
+                    time.sleep(1)
         self.ensure()
         self.network()
         devenv_revision = source_info(ROOT)
@@ -174,17 +208,15 @@ p.write_text('\\n'.join(lines)+'\\n')
             for name in ('services', 'ciab_devenv', 'verification', 'tests'):
                 output.add(ROOT / name, arcname='devenv/' + name,
                            filter=lambda member: None if '__pycache__' in member.name else member)
-            output.add(self.instance.root / 'certs/server.crt', arcname='local.crt')
-        values = json.loads(args.secrets_json.read_text()) if args.secrets_json else {}
-        values.setdefault('OPENAI_API_KEY', os.environ['OPENAI_API_KEY'])
+            output.add(self.instance.root / 'certs/ca.crt', arcname='local.crt')
         secret = self.instance.root / 'machine-secrets.json'
         settings_file = self.instance.root / 'machine-settings.json'
         private_write(secret, json.dumps(values))
         env = self.instance.compose_env()
         local = {key: env[key] for key in ('CRUX_MODEL', 'CRUX_REASONING_EFFORT', 'COST_TRACKER_URL', 'COST_TRACKER_TOKEN',
-                                         'RUNPOD_API_KEY', 'CIAB_FIXTURE_TOKEN')}
+                                         'RUNPOD_API_KEY', 'CIAB_FIXTURE_TOKEN', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY')}
         local.update(CIAB_FIXTURE_URL='https://fixtures.test', CIAB_STORAGE_PASSWORD=env['CIAB_PASSWORD'])
-        settings = {'scaffold': self.instance.scaffold.name, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
+        settings = {'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
                     'has_manifest': bool(args.manifest), 'environment': local, 'redactions': secret_values(values)}
         private_write(settings_file, json.dumps(settings))
         run_id = new_id()
@@ -215,8 +247,9 @@ p.write_text('\\n'.join(lines)+'\\n')
             private_write(report_dir / 'output.log', clean)
             raw.unlink()
             print(clean[-12000:])
-            receipt = {'source': source_revision, 'scaffold': self.instance.scaffold.name, 'model': settings['model'], 'effort': settings['effort'],
-                       'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()),
+            receipt = {'source': source_revision, 'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins,
+                       'workspace_id': self.instance.data.get('agentrq_workspace_id'), 'model': settings['model'], 'effort': settings['effort'],
+                       'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()) if args.drop_in else None,
                        'provisioned_devenv': devenv_revision, 'provisioning_inputs': inputs,
                        'services': {k: env[k] for k in ('LANGFUSE_BASE_URL', 'COST_TRACKER_URL', 'CIAB_RUNPOD_HOST')}}
             report = dict(receipt, run_id=run_id, suite='provision', exit_code=code,
@@ -236,7 +269,7 @@ p.write_text('\\n'.join(lines)+'\\n')
 
     def job(self, suite, argv=(), timeout=900, input_path=None):
         receipt = self.require_provisioned()
-        if suite != 'fixture':
+        if suite not in ('fixture', 'snapshot'):
             self.require_idle()
         run_id = new_id()
         inputs = None
@@ -278,6 +311,7 @@ p.write_text('\\n'.join(lines)+'\\n')
                 raise DevError(f'Could not collect {run_id}; inspect {self.name} /var/lib/ciab/reports.')
             private_write(destination / name, result.stdout)
         print((destination / 'output.log').read_text())
+        self.last_report = destination
         report = json.loads((destination / 'report.json').read_text())
         print(f'Evidence: {destination}/report.json; status={report["status"]}')
         return report.get('exit_code', code)

@@ -28,7 +28,7 @@ def main():
     staging = Path('/opt/ciab-staging')
     sys.path.insert(0, str(staging / 'devenv'))
     from ciab_devenv.scaffolds import get_scaffold
-    scaffold = get_scaffold(settings.get('scaffold', 'sdk'))
+    scaffold = get_scaffold(settings.get('scaffold', 'sdk'), settings.get('platform'))
     adapter = import_module('services.' + scaffold.name + '_setup')
     run(['apt-get', 'update', '-qq'])
     run(['apt-get', 'install', '-y', '-qq', 'ca-certificates', 'curl', 'python3', 'jq', 'unzip', 'shellcheck'])
@@ -37,7 +37,7 @@ def main():
     run(['update-ca-certificates'])
     trust = Path('/etc/systemd/system.conf.d/ciab-local-trust.conf')
     trust.parent.mkdir(parents=True, exist_ok=True)
-    trust.write_text('[Manager]\nDefaultEnvironment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt\n')
+    trust.write_text('[Manager]\nDefaultEnvironment=CODEX_CA_CERTIFICATE=/usr/local/share/ca-certificates/ciab-local.crt SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt\n')
     run(['systemctl', 'daemon-reexec'])
     replace_tree(staging / 'source', '/source')
     replace_tree(staging / 'devenv', '/devenv')
@@ -48,14 +48,16 @@ def main():
         if (source / name).is_file():
             shutil.copy2(source / name, Path('/usr/local/lib/crux') / name)
     shutil.copy2(source / ('scaffolds/' + scaffold.name + '.sh'), source / 'scaffold.sh')
-    adapter.prepare()
+    adapter.prepare(settings)
     if settings['has_manifest']:
         shutil.copy2(staging / 'input/provision.json', '/etc/crux-provision.json')
         Path('/etc/crux-provision.json').chmod(0o644)
     else:
         Path('/etc/crux-provision.json').unlink(missing_ok=True)
     environment = dict(os.environ, AGENT_PLATFORM=scaffold.platform, DEBIAN_FRONTEND='noninteractive')
+    environment.update(adapter.settings_environment(settings))
     run(['bash', str(source / 'install-run.sh')], env=environment)
+    adapter.installed(scaffold)
     run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
          'pytest==8.4.2', 'ruff==0.14.1'])
     drop = Path('/srv/crux-run/run-harness')
@@ -77,9 +79,12 @@ def main():
                        RUN_SLUG=settings['run_slug'])
     environment.update(adapter.settings_environment(settings))
     run(['bash', str(source / 'configure-run.sh')], env=environment)
+    adapter.configured(scaffold)
     values = settings['environment']
-    values.update(PATH=str(Path(scaffold.python).parent) + ':/opt/crux-run-tools/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin',
+    values.update(CODEX_CA_CERTIFICATE='/usr/local/share/ca-certificates/ciab-local.crt',
+                  PATH=str(Path(scaffold.python).parent) + ':/opt/crux-run-tools/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin',
                   PYTHONPATH=scaffold.pythonpath, PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1',
+                  NODE_EXTRA_CA_CERTS='/etc/ssl/certs/ca-certificates.crt',
                   SSL_CERT_FILE='/etc/ssl/certs/ca-certificates.crt', REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt',
                   AWS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt', AWS_PROFILE='ciab-local',
                   AWS_CONFIG_FILE='/home/ubuntu/.aws/config', AWS_SHARED_CREDENTIALS_FILE='/home/ubuntu/.aws/credentials',

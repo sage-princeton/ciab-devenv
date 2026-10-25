@@ -136,11 +136,11 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       COST_TRACKER_TOKEN: ${COST_TRACKER_TOKEN}
-      SSL_CERT_FILE: /certs/server.crt
+      SSL_CERT_FILE: /certs/ca.crt
     volumes:
       - ./services:/devenv/services:ro
       - ${CIAB_SOURCE}/lambda:/source/lambda:ro
-      - ${CIAB_INSTANCE}/certs/server.crt:/certs/server.crt:ro
+      - ${CIAB_INSTANCE}/certs/ca.crt:/certs/ca.crt:ro
 
 volumes:
   postgres:

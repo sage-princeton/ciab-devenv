@@ -18,3 +18,7 @@ https://api.runpod.io {
   tls /certs/server.crt /certs/server.key
   reverse_proxy fixtures:8080
 }
+https://agentrq.test, https://localhost {
+  tls /certs/server.crt /certs/server.key
+  reverse_proxy agentrq:2026
+}

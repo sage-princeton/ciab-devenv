@@ -73,6 +73,18 @@ class EnvironmentTests(unittest.TestCase):
         private_write(path, json.dumps({"test": True}))
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_local_tls_uses_a_signed_server_certificate(self):
+        instance = Environment('certificates')
+        self.assertTrue(instance.certificates())
+        certs = instance.root / 'certs'
+        subprocess.run(['openssl', 'verify', '-purpose', 'sslserver', '-CAfile', str(certs / 'ca.crt'),
+                        str(certs / 'server.crt')], check=True, capture_output=True)
+        leaf = subprocess.check_output(['openssl', 'x509', '-in', str(certs / 'server.crt'), '-text', '-noout'], text=True)
+        self.assertIn('CA:FALSE', leaf)
+        self.assertIn('DNS:agentrq.test', leaf)
+        self.assertEqual(stat.S_IMODE((certs / 'ca.key').stat().st_mode), 0o600)
+        self.assertFalse(instance.certificates())
+
     def test_caller_input_excludes_secret_files_and_symlinks(self):
         (self.source / ".envrc").write_text("private")
         (self.source / "outside").symlink_to(self.root)
