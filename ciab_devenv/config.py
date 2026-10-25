@@ -172,6 +172,7 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
         if self.scaffold.name == 'acp':
             result.update(CIAB_AGENTRQ_IMAGE=d.get('agentrq_image', 'agentrq-not-provisioned'),
                           CIAB_AGENTRQ_ARCH=d.get('agentrq_architecture', 'amd64'),
+                          CIAB_AGENTRQ_SQLITE_DSN=d.get('agentrq_sqlite_dsn', '/_storage/agentrq.db'),
                           CIAB_AGENTRQ_PORT=str(d['port'] + 1), CIAB_AGENTRQ_ROOT_TOKEN=d['agentrq_root_token'],
                           CIAB_AGENTRQ_JWT_SECRET=d['agentrq_jwt_secret'], CIAB_AGENTRQ_TOKEN_KEY=d['agentrq_token_key'],
                           CIAB_AGENTRQ_WORKSPACE_TOKEN=d.get('agentrq_workspace_token', ''))

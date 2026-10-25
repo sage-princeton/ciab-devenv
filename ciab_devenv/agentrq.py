@@ -5,6 +5,7 @@ import hashlib
 import http.cookiejar
 import json
 import re
+import shlex
 import ssl
 import subprocess
 import urllib.error
@@ -23,14 +24,14 @@ def assignments(path, keys):
     for key in keys:
         match = re.search(r'^' + re.escape(key) + r'=([^\s#]+)\s*$', text, re.MULTILINE)
         if match:
-            result[key] = match[1]
+            result[key] = shlex.split(match[1])[0]
     return result
 
 
 def pins(source):
     result = assignments(source / 'src/ec2-workspaces/placeholders-base.txt.example', PIN_KEYS)
     result.update(assignments(source / 'src/ec2-control/configure-control.sh',
-                              ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256')))
+                              ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256', 'AGENTRQ_SQLITE_DSN')))
     required = ('AGENTRQ_IMAGE',)
     if '@sha256:' not in result.get('AGENTRQ_IMAGE', ''):
         required += ('AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256')
@@ -52,6 +53,7 @@ def prepare_image(instance, settings):
                                                image], text=True))[0]
     instance.data['agentrq_image'] = info['Id']
     instance.data['agentrq_architecture'] = info['Architecture']
+    instance.data['agentrq_sqlite_dsn'] = settings.get('AGENTRQ_SQLITE_DSN', '/_storage/agentrq.db')
     private_write(instance.path, json.dumps(instance.data, indent=2) + '\n')
 
 

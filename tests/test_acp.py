@@ -22,11 +22,13 @@ class ACPTests(unittest.TestCase):
                 'ciab_devenv.agentrq.subprocess.check_output',
                 return_value='[{"Id":"sha256:installed","Architecture":"arm64"}]',
             ):
-                prepare_image(instance, {'AGENTRQ_IMAGE': image})
+                dsn = 'file:/_storage/agentrq.db?_txlock=immediate'
+                prepare_image(instance, {'AGENTRQ_IMAGE': image, 'AGENTRQ_SQLITE_DSN': dsn})
                 run.assert_called_once_with(['docker', '--context', 'orbstack', 'pull', image],
                                             check=True, capture_output=True)
                 self.assertEqual(instance.data['agentrq_image'], 'sha256:installed')
                 self.assertEqual(instance.data['agentrq_architecture'], 'arm64')
+                self.assertEqual(instance.data['agentrq_sqlite_dsn'], dsn)
                 with self.assertRaisesRegex(DevError, 'digest pin'):
                     prepare_image(instance, {'AGENTRQ_IMAGE': 'agentrq/agentrq@sha256:invalid'})
                 self.assertEqual(run.call_count, 1)
@@ -39,8 +41,10 @@ class ACPTests(unittest.TestCase):
             control.parent.mkdir(parents=True)
             workspace.parent.mkdir(parents=True)
             workspace.write_text('')
-            control.write_text('AGENTRQ_IMAGE=agentrq/agentrq@sha256:' + 'a' * 64 + '\n')
+            control.write_text('AGENTRQ_IMAGE=agentrq/agentrq@sha256:' + 'a' * 64 + '\n'
+                               "AGENTRQ_SQLITE_DSN='file:/_storage/agentrq.db?_txlock=immediate'\n")
             self.assertIn('AGENTRQ_IMAGE', pins(source))
+            self.assertEqual(pins(source)['AGENTRQ_SQLITE_DSN'], 'file:/_storage/agentrq.db?_txlock=immediate')
             control.write_text('AGENTRQ_IMAGE=agentrq-crux:old\n')
             with self.assertRaisesRegex(DevError, 'AGENTRQ_IMAGE_URL'):
                 pins(source)
