@@ -31,13 +31,31 @@ def pins(source):
     result = assignments(source / 'src/ec2-workspaces/placeholders-base.txt.example', PIN_KEYS)
     result.update(assignments(source / 'src/ec2-control/configure-control.sh',
                               ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256')))
-    for key in ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256'):
+    required = ('AGENTRQ_IMAGE',)
+    if '@sha256:' not in result.get('AGENTRQ_IMAGE', ''):
+        required += ('AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256')
+    for key in required:
         if key not in result:
             raise DevError('Selected source does not declare ' + key)
     return result
 
 
 def prepare_image(instance, settings):
+    image = settings['AGENTRQ_IMAGE']
+    if '@sha256:' in image:
+        if not re.fullmatch(r'[^\s@]+@sha256:[a-f0-9]{64}', image):
+            raise DevError('AgentRQ registry image needs a sha256 digest pin.')
+        subprocess.run(['docker', '--context', 'orbstack', 'pull', image], check=True, capture_output=True)
+    else:
+        load_archive(instance, settings)
+    info = json.loads(subprocess.check_output(['docker', '--context', 'orbstack', 'image', 'inspect',
+                                               image], text=True))[0]
+    instance.data['agentrq_image'] = info['Id']
+    instance.data['agentrq_architecture'] = info['Architecture']
+    private_write(instance.path, json.dumps(instance.data, indent=2) + '\n')
+
+
+def load_archive(instance, settings):
     archive = instance.root / 'agentrq-image.tar.gz'
     expected = settings['AGENTRQ_IMAGE_SHA256']
     if not re.fullmatch('[a-f0-9]{64}', expected):
@@ -52,11 +70,6 @@ def prepare_image(instance, settings):
             archive.unlink()
             raise DevError('AgentRQ image archive does not match the selected source hash.')
     subprocess.run(['docker', '--context', 'orbstack', 'load', '-i', str(archive)], check=True, capture_output=True)
-    info = json.loads(subprocess.check_output(['docker', '--context', 'orbstack', 'image', 'inspect',
-                                               settings['AGENTRQ_IMAGE']], text=True))[0]
-    instance.data['agentrq_image'] = info['Id']
-    instance.data['agentrq_architecture'] = info['Architecture']
-    private_write(instance.path, json.dumps(instance.data, indent=2) + '\n')
 
 
 class Client:

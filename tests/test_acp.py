@@ -7,12 +7,47 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from ciab_devenv.acp import run_task
+from ciab_devenv.agentrq import pins, prepare_image
 from ciab_devenv.config import DevError, Environment
 from ciab_devenv.scaffolds import ACP, SDK, get_scaffold
 from services.acp_setup import settings_environment
 
 
 class ACPTests(unittest.TestCase):
+    def test_registry_image_requires_digest_and_records_installed_image(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'CIAB_STATE_ROOT': tmp}):
+            instance = Environment('registry')
+            image = 'agentrq/agentrq:1.0.0@sha256:' + 'a' * 64
+            with patch('ciab_devenv.agentrq.subprocess.run') as run, patch(
+                'ciab_devenv.agentrq.subprocess.check_output',
+                return_value='[{"Id":"sha256:installed","Architecture":"arm64"}]',
+            ):
+                prepare_image(instance, {'AGENTRQ_IMAGE': image})
+                run.assert_called_once_with(['docker', '--context', 'orbstack', 'pull', image],
+                                            check=True, capture_output=True)
+                self.assertEqual(instance.data['agentrq_image'], 'sha256:installed')
+                self.assertEqual(instance.data['agentrq_architecture'], 'arm64')
+                with self.assertRaisesRegex(DevError, 'digest pin'):
+                    prepare_image(instance, {'AGENTRQ_IMAGE': 'agentrq/agentrq@sha256:invalid'})
+                self.assertEqual(run.call_count, 1)
+
+    def test_archive_pins_remain_required_for_older_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            control = source / 'src/ec2-control/configure-control.sh'
+            workspace = source / 'src/ec2-workspaces/placeholders-base.txt.example'
+            control.parent.mkdir(parents=True)
+            workspace.parent.mkdir(parents=True)
+            workspace.write_text('')
+            control.write_text('AGENTRQ_IMAGE=agentrq/agentrq@sha256:' + 'a' * 64 + '\n')
+            self.assertIn('AGENTRQ_IMAGE', pins(source))
+            control.write_text('AGENTRQ_IMAGE=agentrq-crux:old\n')
+            with self.assertRaisesRegex(DevError, 'AGENTRQ_IMAGE_URL'):
+                pins(source)
+            control.write_text('AGENTRQ_IMAGE=agentrq-crux:old\nAGENTRQ_IMAGE_URL=https://example.test/image.tar.gz\n'
+                               'AGENTRQ_IMAGE_SHA256=' + 'b' * 64 + '\n')
+            self.assertEqual(pins(source)['AGENTRQ_IMAGE_SHA256'], 'b' * 64)
+
     def test_platform_contracts_and_production_settings(self):
         for platform in ('codex', 'claude'):
             adapter = get_scaffold('acp', platform)
