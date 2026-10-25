@@ -63,15 +63,19 @@ class Environment:
             raise DevError(f"Instance {self.name} is not configured. Run devctl --name {self.name} setup --source PATH.")
         return Path(self.data["source"])
 
-    def setup(self, source: Path, port: int) -> None:
+    @property
+    def scaffold(self):
+        from .scaffolds import get_scaffold
+        return get_scaffold(self.data.get("scaffold", "sdk"))
+
+    def setup(self, source: Path, port: int, scaffold="sdk") -> None:
         source = source.expanduser().resolve()
-        if not (source / "src/sdk-scaffold/requirements.txt").is_file():
-            raise DevError(f"{source} has no SDK scaffold. Select a crux-in-a-box worktree with --source.")
-        source_info(source)
-        if self.data and (self.data["source"] != str(source) or self.data["port"] != port):
+        from .scaffolds import get_scaffold
+        get_scaffold(scaffold).validate_source(source)
+        if self.data and (self.data["source"] != str(source) or self.data["port"] != port or self.scaffold.name != scaffold):
             raise DevError("This instance already targets a source/port. Use another --name or reset this instance first.")
         if not self.data:
-            self.data = {"source": str(source), "port": port,
+            self.data = {"source": str(source), "port": port, "scaffold": scaffold,
                          "langfuse_public_key": "pk-lf-" + secrets.token_hex(16),
                          "langfuse_secret_key": "sk-lf-" + secrets.token_hex(16),
                          "password": secrets.token_urlsafe(24), "salt": secrets.token_hex(32),

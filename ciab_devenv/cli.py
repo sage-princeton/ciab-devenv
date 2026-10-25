@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .config import DEFAULT_SOURCE, ROOT, DevError, Environment, private_write, source_info
-from .machine import Machine, scrub, show_report, validate_source
+from .machine import Machine, scrub, show_report
 
 
 def execute(argv, *, env=None, timeout=None):
@@ -49,6 +49,7 @@ def parser():
     for command in ('setup', 'bootstrap'):
         s = sub.add_parser(command, help='configure only' if command == 'setup' else 'configure, start services and provision Ubuntu')
         s.add_argument('--source', type=Path, default=DEFAULT_SOURCE)
+        s.add_argument('--scaffold', choices=('sdk',), default='sdk')
         s.add_argument('--port', type=int, default=23100)
         if command == 'bootstrap':
             provisioning_arguments(s)
@@ -123,8 +124,7 @@ def main(argv=None):
         if args.command in ('setup', 'bootstrap'):
             if not 1024 <= args.port <= 65535:
                 raise DevError('Choose a localhost port between 1024 and 65535.')
-            validate_source(args.source.expanduser().resolve())
-            instance.setup(args.source, args.port)
+            instance.setup(args.source, args.port, args.scaffold)
             print(f'Configured {instance.name}: {instance.source}; private state: {instance.root}')
             if args.command == 'setup':
                 return 0
@@ -149,7 +149,7 @@ def main(argv=None):
         if args.command == 'select':
             machine.require_idle()
             source = args.source.expanduser().resolve()
-            validate_source(source)
+            instance.scaffold.validate_source(source)
             instance.data['source'] = str(source)
             private_write(instance.path, json.dumps(instance.data, indent=2) + '\n')
             machine.receipt.unlink(missing_ok=True)
@@ -166,7 +166,7 @@ def main(argv=None):
             return result
         if args.command == 'status':
             print(json.dumps({'instance': instance.name, 'source': source_info(instance.source),
-                              'machine': machine.state(), 'provisioned': machine.receipt.exists(),
+                              'machine': machine.state(), 'provisioned': machine.receipt.exists(), 'scaffold': instance.scaffold.name,
                               'langfuse': f'http://localhost:{instance.data["port"]}', 'private_state': str(instance.root)}, indent=2))
             return compose(instance, 'ps')
         if args.command in ('logs', 'restart'):

@@ -14,9 +14,7 @@ from pathlib import Path
 sys.path.insert(0, '/devenv')
 from ciab_devenv.machine import scrub  # noqa: E402
 
-SDK = '/opt/crux-sdk-scaffold/.venv/bin/python'
-DROP_IN = '/srv/crux-run/run-harness'
-STATE = '/srv/crux-run/state'
+from ciab_devenv.scaffolds import get_scaffold  # noqa: E402
 
 
 def environment():
@@ -43,6 +41,7 @@ def main():
     data = json.loads(request.read_text())
     request.unlink()
     run_id, suite = data['run_id'], data['suite']
+    scaffold = get_scaffold(data.get('scaffold', 'sdk'))
     output = Path('/var/lib/ciab/reports') / run_id
     output.mkdir(parents=True)
     run_dir = Path('/work/runs') / run_id
@@ -52,7 +51,7 @@ def main():
     for path in (run_dir.parent, run_dir):
         os.chown(path, user.pw_uid, user.pw_gid)
     values = environment()
-    unit = 'crux-sdk-run' if suite == 'run' else 'ciab-command-' + run_id.lower()
+    unit = scaffold.service if suite == 'run' else 'ciab-command-' + run_id.lower()
     interrupted = False
 
     def stop(signum, frame):
@@ -63,8 +62,8 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     data.update(started_at=datetime.now(timezone.utc).isoformat(timespec='microseconds'), status='running',
-                artifacts=DROP_IN + '/workspace' if suite == 'run' else str(run_dir),
-                state_dir=STATE, coverage='Caller owns scenarios, assertions and acceptance interpretation.',
+                artifacts=scaffold.artifacts if suite == 'run' else str(run_dir),
+                state_dir=scaffold.state, coverage='Caller owns scenarios, assertions and acceptance interpretation.',
                 gaps=['Local fixtures do not establish vendor OAuth, delivery, AWS IAM or real GPU behavior.',
                       'OrbStack shares its Linux kernel; this does not validate EC2 or cloud resource provisioning.'])
     (output / 'report.json').write_text(json.dumps(data, indent=2))
@@ -73,7 +72,7 @@ def main():
     code = 2
     try:
         if suite == 'run':
-            data['command'] = ['systemctl', 'start', 'crux-sdk-run']
+            data['command'] = ['systemctl', 'start', scaffold.service]
             subprocess.run(['systemctl', 'reset-failed', unit], check=False, capture_output=True)
             subprocess.run(data['command'], check=True)
             invocation = service_state(unit)['InvocationID']
@@ -98,16 +97,7 @@ def main():
                 subprocess.run(['journalctl', '--no-pager', '-o', 'cat', '-u', unit,
                                 '--since', data['started_at']], stdout=stream, stderr=subprocess.STDOUT, check=True)
         else:
-            if suite in ('services', 'fixture'):
-                command = [SDK, '/devenv/services/check_services.py', suite, *data['argv']]
-            elif suite == 'exec':
-                command = data['argv']
-            elif suite == 'probe':
-                command = [SDK, '-m', 'crux_scaffold', 'probe', '--coding-agent', 'codex']
-            elif suite == 'check':
-                command = [SDK, '-m', 'crux_scaffold', 'check', '--drop-in', DROP_IN, '--state-dir', STATE]
-            else:
-                raise ValueError('Unsupported machine operation: ' + suite)
+            command = scaffold.command(suite, data['argv'])
             data['command'] = command
             with raw.open('w') as stream:
                 process = subprocess.Popen(['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', unit,

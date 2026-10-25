@@ -22,6 +22,7 @@ the stack and configure clients.
 | `slack_mcp.py` | MCP tools translating the pinned Slack CSV/tool contract to the local message service |
 | `mailbox_cli.py` | Downloadable CLI reading caller-provisioned mailbox authentication |
 | `machine_setup.py` | Local CA/SSM setup and invocation of production install/configure hooks with caller-supplied inputs |
+| `sdk_setup.py` | SDK source staging and production model settings |
 
 Compose mounts fixture code read-only. Restart a service container after changing
 its Python code. Provisioning copies machine adapters and reusable helpers to

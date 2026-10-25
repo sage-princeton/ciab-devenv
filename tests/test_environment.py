@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from ciab_devenv.scaffolds import SDK
 from ciab_devenv.config import DevError, Environment, private_write, source_info, stage_directory
 
 
@@ -20,8 +21,10 @@ class EnvironmentTests(unittest.TestCase):
         for args in (("init", "-b", "main"), ("config", "user.email", "test@example.invalid"),
                      ("config", "user.name", "Test")):
             subprocess.run(["git", "-C", str(self.source), *args], check=True, capture_output=True)
-        (self.source / "src/sdk-scaffold").mkdir(parents=True)
-        (self.source / "src/sdk-scaffold/requirements.txt").write_text("# fixture\n")
+        for name in SDK.required_files:
+            path = self.source / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('# fixture\n')
         (self.source / "code.py").write_text("first\n")
         subprocess.run(["git", "-C", str(self.source), "add", "."], check=True)
         subprocess.run(["git", "-C", str(self.source), "commit", "-m", "fixture"], check=True, capture_output=True)
