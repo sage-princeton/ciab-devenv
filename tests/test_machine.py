@@ -11,6 +11,7 @@ from unittest.mock import patch
 from ciab_devenv.cli import main
 from ciab_devenv.config import DevError, Environment, private_write, source_info
 from ciab_devenv.machine import Machine, PROVISION_FILES, scrub, secret_values, validate_source
+from ciab_devenv.scaffolds import SDK, get_scaffold
 
 
 class MachineTests(unittest.TestCase):
@@ -39,6 +40,31 @@ class MachineTests(unittest.TestCase):
         (self.source / PROVISION_FILES[0]).unlink()
         with self.assertRaisesRegex(DevError, 'lacks SDK provisioning'):
             validate_source(self.source)
+
+    def test_legacy_instances_and_receipts_keep_sdk_behavior(self):
+        self.instance.data.pop('scaffold')
+        self.assertEqual(self.instance.scaffold, SDK)
+        self.assertEqual(SDK.command('exec', ['echo', 'hello']), ['echo', 'hello'])
+        self.assertEqual(SDK.command('probe')[-2:], ['--coding-agent', 'codex'])
+        self.assertIn('/srv/crux-run/state', SDK.command('check'))
+        with self.assertRaisesRegex(DevError, 'Unsupported scaffold'):
+            get_scaffold('unknown')
+
+    def test_scaffold_drift_cannot_execute_existing_receipt(self):
+        private_write(self.machine.receipt, json.dumps({'source': source_info(self.source), 'scaffold': 'other'}))
+        with patch.object(self.machine, 'require_running'):
+            with self.assertRaisesRegex(DevError, 'scaffold changed'):
+                self.machine.require_provisioned()
+
+    def test_idle_check_and_shutdown_use_selected_service(self):
+        with patch.object(self.machine, 'state', return_value={'state': 'running'}):
+            with patch.object(self.machine, 'call', return_value=subprocess.CompletedProcess([], 0, 'active')):
+                with self.assertRaisesRegex(DevError, 'crux-sdk-run is active'):
+                    self.machine.require_idle()
+            with patch.object(self.machine, 'call') as remote, patch('subprocess.run') as host:
+                self.machine.stop()
+                self.assertIn(SDK.service, remote.call_args.args)
+                host.assert_called_once_with(['orb', 'stop', self.machine.name], check=True)
 
     def test_unprovisioned_or_changed_source_cannot_execute(self):
         with patch.object(self.machine, 'require_running'):

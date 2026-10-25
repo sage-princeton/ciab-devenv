@@ -16,6 +16,12 @@ the environment and `./devctl --usage` for all command options.
 | `cli.py` | Argument parsing, explicit OrbStack Compose calls, execution, report export and lifecycle commands |
 | `config.py` | Named instances, private credentials/certificates, tracked-source snapshots, input staging and live-service overrides |
 | `machine.py` | Isolated Ubuntu lifecycle, source validation, production provisioning, job dispatch and cached reports |
+| `scaffolds.py` | Scaffold source requirements, service identity, execution environment and command contracts |
+
+`setup` and `bootstrap` accept `--scaffold sdk` (the default). Existing instances
+and provisioning receipts without a scaffold field retain SDK behavior. The
+selected scaffold is recorded in new receipts and reports; changing it requires
+a separate named instance. Source selection still requires reprovisioning.
 
 Each instance uses `~/.local/state/ciab-devenv/<name>` and Docker project
 `ciab-<name>`. `CIAB_STATE_ROOT` changes the host state parent. Never print the

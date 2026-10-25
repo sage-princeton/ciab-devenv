@@ -1,8 +1,10 @@
-"""Install the selected production SDK scaffold and local service connections."""
+"""Install the selected production scaffold and local service connections."""
 import json
 import os
 import shutil
 import subprocess
+import sys
+from importlib import import_module
 from pathlib import Path
 
 
@@ -24,6 +26,10 @@ def main():
     os.umask(0o022)
     settings = json.loads(Path('/tmp/machine-settings.json').read_text())
     staging = Path('/opt/ciab-staging')
+    sys.path.insert(0, str(staging / 'devenv'))
+    from ciab_devenv.scaffolds import get_scaffold
+    scaffold = get_scaffold(settings.get('scaffold', 'sdk'))
+    adapter = import_module('services.' + scaffold.name + '_setup')
     run(['apt-get', 'update', '-qq'])
     run(['apt-get', 'install', '-y', '-qq', 'ca-certificates', 'curl', 'python3', 'jq', 'unzip', 'shellcheck'])
     shutil.copy2(staging / 'local.crt', '/usr/local/share/ca-certificates/ciab-local.crt')
@@ -41,17 +47,16 @@ def main():
     for name in ('run_provision.py', 'run_service_auth.py'):
         if (source / name).is_file():
             shutil.copy2(source / name, Path('/usr/local/lib/crux') / name)
-    shutil.copy2(source / 'scaffolds/sdk.sh', source / 'scaffold.sh')
-    replace_tree('/source/src/sdk-scaffold', '/opt/crux-sdk-scaffold', preserve=('.venv',))
-    run(['chmod', '-R', 'a+rX,go-w', '/opt/crux-sdk-scaffold'])
+    shutil.copy2(source / ('scaffolds/' + scaffold.name + '.sh'), source / 'scaffold.sh')
+    adapter.prepare()
     if settings['has_manifest']:
         shutil.copy2(staging / 'input/provision.json', '/etc/crux-provision.json')
         Path('/etc/crux-provision.json').chmod(0o644)
     else:
         Path('/etc/crux-provision.json').unlink(missing_ok=True)
-    environment = dict(os.environ, AGENT_PLATFORM='openai-agents', DEBIAN_FRONTEND='noninteractive')
+    environment = dict(os.environ, AGENT_PLATFORM=scaffold.platform, DEBIAN_FRONTEND='noninteractive')
     run(['bash', str(source / 'install-run.sh')], env=environment)
-    run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', '/opt/crux-sdk-scaffold/.venv/bin/python',
+    run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
          'pytest==8.4.2', 'ruff==0.14.1'])
     drop = Path('/srv/crux-run/run-harness')
     preserve = ('workspace',) if (drop / 'workspace').exists() else ()
@@ -69,12 +74,12 @@ def main():
                        AWS_ENDPOINT_URL='https://fixtures.test', AWS_ENDPOINT_URL_SSM='https://fixtures.test',
                        AWS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt',
                        RUN_SECRETS_PATH='/tmp/machine-secrets.json', SYSTEM_SSM_PARAM='/crux/local/system/env',
-                       RUN_SLUG=settings['run_slug'], OPENAI_AGENTS_MODEL=settings['model'],
-                       OPENAI_AGENTS_REASONING_EFFORT=settings['effort'])
+                       RUN_SLUG=settings['run_slug'])
+    environment.update(adapter.settings_environment(settings))
     run(['bash', str(source / 'configure-run.sh')], env=environment)
     values = settings['environment']
-    values.update(PATH='/opt/crux-sdk-scaffold/.venv/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin',
-                  PYTHONPATH='/opt/crux-sdk-scaffold:/devenv', PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1',
+    values.update(PATH=str(Path(scaffold.python).parent) + ':/opt/crux-run-tools/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin',
+                  PYTHONPATH=scaffold.pythonpath, PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1',
                   SSL_CERT_FILE='/etc/ssl/certs/ca-certificates.crt', REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt',
                   AWS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt', AWS_PROFILE='ciab-local',
                   AWS_CONFIG_FILE='/home/ubuntu/.aws/config', AWS_SHARED_CREDENTIALS_FILE='/home/ubuntu/.aws/credentials',
@@ -95,7 +100,7 @@ def main():
                                    '[ciab-storage]\naws_access_key_id=ciab\naws_secret_access_key=' + values['CIAB_STORAGE_PASSWORD'] + '\n')
     (aws / 'credentials').chmod(0o600)
     run(['chown', '-R', 'ubuntu:ubuntu', str(aws)])
-    override = Path('/etc/systemd/system/crux-sdk-run.service.d/ciab.conf')
+    override = Path('/etc/systemd/system') / (scaffold.service + '.service.d/ciab.conf')
     override.parent.mkdir(parents=True, exist_ok=True)
     override.write_text('[Service]\nEnvironmentFile=/etc/ciab-run.env\n')
     run(['systemctl', 'daemon-reload'])

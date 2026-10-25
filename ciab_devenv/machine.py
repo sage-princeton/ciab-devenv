@@ -10,15 +10,13 @@ import time
 
 from .config import ROOT, DevError, private_write, source_info, stage_directory
 
-PROVISION_FILES = ('src/ec2-workspaces/install-run.sh', 'src/ec2-workspaces/configure-run.sh',
-                   'src/ec2-workspaces/scaffolds/sdk.sh', 'src/sdk-scaffold/requirements.txt')
+from .scaffolds import SDK, get_scaffold
+
+PROVISION_FILES = SDK.required_files
 
 
-def validate_source(source):
-    missing = [name for name in PROVISION_FILES if not (source / name).is_file()]
-    if missing:
-        raise DevError('Selected source lacks SDK provisioning: ' + ', '.join(missing))
-    source_info(source)
+def validate_source(source, scaffold='sdk'):
+    get_scaffold(scaffold).validate_source(source)
 
 
 def scrub(text, values):
@@ -89,15 +87,17 @@ class Machine:
     def require_idle(self):
         state = self.state()
         if state and state['state'] == 'running':
-            result = self.call('systemctl', 'is-active', 'crux-sdk-run', capture=True, check=False)
+            result = self.call('systemctl', 'is-active', self.instance.scaffold.service, capture=True, check=False)
             if result.stdout.strip() in ('active', 'activating', 'deactivating'):
-                raise DevError('crux-sdk-run is active. Wait for the current run or use down to stop it.')
+                raise DevError(f'{self.instance.scaffold.service} is active. Wait for the current run or use down to stop it.')
 
     def require_provisioned(self):
         self.require_running()
         if not self.receipt.exists():
             raise DevError('Provision this machine with a caller-supplied --drop-in first.')
         receipt = json.loads(self.receipt.read_text())
+        if receipt.get('scaffold', 'sdk') != self.instance.scaffold.name:
+            raise DevError('Selected scaffold changed since provisioning. Reprovision before testing.')
         if receipt['source'] != source_info(self.instance.source):
             raise DevError('Selected source changed since provisioning. Run provision --drop-in PATH before testing.')
         return receipt
@@ -133,7 +133,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         state = self.state()
         if state and state['state'] == 'running':
             try:
-                self.call('systemctl', 'stop', 'crux-sdk-run.service', 'ciab-job-*.service', 'ciab-command-*.service', check=False)
+                self.call('systemctl', 'stop', self.instance.scaffold.service, 'ciab-job-*.service', 'ciab-command-*.service', check=False)
             finally:
                 subprocess.run(['orb', 'stop', self.name], check=True)
 
@@ -144,7 +144,7 @@ p.write_text('\\n'.join(lines)+'\\n')
 
     def provision(self, args):
         from .cli import compose
-        validate_source(self.instance.source)
+        self.instance.scaffold.validate_source(self.instance.source)
         if not os.environ.get('OPENAI_API_KEY'):
             raise DevError('Production provisioning requires OPENAI_API_KEY from direnv for its live probes.')
         self.require_idle()
@@ -184,7 +184,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         local = {key: env[key] for key in ('CRUX_MODEL', 'CRUX_REASONING_EFFORT', 'COST_TRACKER_URL', 'COST_TRACKER_TOKEN',
                                          'RUNPOD_API_KEY', 'CIAB_FIXTURE_TOKEN')}
         local.update(CIAB_FIXTURE_URL='https://fixtures.test', CIAB_STORAGE_PASSWORD=env['CIAB_PASSWORD'])
-        settings = {'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
+        settings = {'scaffold': self.instance.scaffold.name, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
                     'has_manifest': bool(args.manifest), 'environment': local, 'redactions': secret_values(values)}
         private_write(settings_file, json.dumps(settings))
         run_id = new_id()
@@ -215,7 +215,7 @@ p.write_text('\\n'.join(lines)+'\\n')
             private_write(report_dir / 'output.log', clean)
             raw.unlink()
             print(clean[-12000:])
-            receipt = {'source': source_revision, 'model': settings['model'], 'effort': settings['effort'],
+            receipt = {'source': source_revision, 'scaffold': self.instance.scaffold.name, 'model': settings['model'], 'effort': settings['effort'],
                        'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()),
                        'provisioned_devenv': devenv_revision, 'provisioning_inputs': inputs,
                        'services': {k: env[k] for k in ('LANGFUSE_BASE_URL', 'COST_TRACKER_URL', 'CIAB_RUNPOD_HOST')}}
