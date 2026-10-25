@@ -177,6 +177,13 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
                           CIAB_AGENTRQ_WORKSPACE_TOKEN=d.get('agentrq_workspace_token', ''))
         return result
 
+    def redactions(self):
+        values = self.process_env()
+        path = self.root / 'redactions.json'
+        if path.exists():
+            values.update({f'SECRET_{index}': value for index, value in enumerate(json.loads(path.read_text()))})
+        return values
+
     def compose_files(self):
         return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else [])]
 

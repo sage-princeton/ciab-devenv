@@ -109,6 +109,14 @@ def main():
     override.parent.mkdir(parents=True, exist_ok=True)
     override.write_text('[Service]\nEnvironmentFile=/etc/ciab-run.env\n')
     run(['systemctl', 'daemon-reload'])
+    versions = {'node': subprocess.check_output(['node', '--version'], text=True).strip()}
+    if scaffold.name == 'acp':
+        versions[scaffold.platform] = subprocess.check_output([scaffold.platform, '--version'], text=True).strip()
+        packages = Path('/usr/lib/node_modules')
+        names = ['@agentrq/acp-gateway', '@agentclientprotocol/' + ('codex-acp' if scaffold.platform == 'codex' else 'claude-agent-acp')]
+        for name in names:
+            versions[name] = json.loads((packages / name / 'package.json').read_text())['version']
+    Path('/etc/ciab-versions.json').write_text(json.dumps(versions, indent=2))
     print('Production installation, sandbox/model probes and service configuration completed. Use devctl run to start CRUX.')
 
 

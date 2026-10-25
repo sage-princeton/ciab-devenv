@@ -41,7 +41,7 @@ def provisioning_arguments(parser):
 
 def parser():
     p = argparse.ArgumentParser(description='Provision and test CRUX on isolated OrbStack Ubuntu.', epilog=(
-        'Credentials: export OPENAI_API_KEY from an ignored direnv .envrc. Models default to gpt-5.4-mini / low. '
+        'Credentials: select the provider test key via direnv. Codex/SDK default to gpt-5.4-mini / low; Claude requires CRUX_MODEL. '
         'State is private under ~/.local/state/ciab-devenv/<name>. down stops the machine and containers.'))
     p.add_argument('--name', default='dev')
     p.add_argument('--usage', action='store_true')
@@ -63,17 +63,17 @@ def parser():
                                  ('down', 'stop machine and containers, preserving data')):
         sub.add_parser(command, help=description)
     for command in ('run', 'check', 'probe'):
-        s = sub.add_parser(command, help='start and observe production crux-sdk-run' if command == 'run' else 'execute the installed scaffold ' + command)
+        s = sub.add_parser(command, help='run the selected scaffold with a wall time limit' if command == 'run' else 'execute the installed scaffold ' + command)
         s.add_argument('--timeout', type=int, default=900)
         if command == 'run':
             group = s.add_mutually_exclusive_group()
             group.add_argument('--prompt-file', type=Path, help='submit an ACP task from a text file')
-            group.add_argument('--task-id', help='observe an existing ACP task')
+            group.add_argument('--task-id', help='requeue and observe an existing ACP task')
     s = sub.add_parser('task', help='observe, reply to or cancel a local ACP task')
     s.add_argument('action', choices=('show', 'reply', 'cancel'))
     s.add_argument('task_id')
     s.add_argument('--message-file', type=Path)
-    s = sub.add_parser('exec', help='execute a command as ubuntu using the provisioned SDK environment')
+    s = sub.add_parser('exec', help='execute a command as ubuntu using the provisioned scaffold environment')
     s.add_argument('--input', type=Path, help='copy a temporary directory read-only to /input')
     s.add_argument('--timeout', type=int, default=900)
     s.add_argument('argv', nargs=argparse.REMAINDER)
@@ -167,6 +167,8 @@ def main(argv=None):
             return 0
         if args.command == 'up':
             machine.require_idle()
+            if not (instance.root / 'certs/ca.crt').exists():
+                raise DevError('This instance uses legacy TLS certificates. Reprovision before up.')
             if not machine.receipt.exists():
                 raise DevError('Use bootstrap or provision --drop-in PATH to install the machine first.')
             result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
@@ -177,6 +179,8 @@ def main(argv=None):
         if args.command == 'status':
             print(json.dumps({'instance': instance.name, 'source': source_info(instance.source),
                               'machine': machine.state(), 'provisioned': machine.receipt.exists(), 'scaffold': instance.scaffold.name,
+                              'platform': instance.scaffold.platform,
+                              'agentrq': f'https://localhost:{instance.data["port"] + 1}' if instance.scaffold.name == 'acp' else None,
                               'langfuse': f'http://localhost:{instance.data["port"]}', 'private_state': str(instance.root)}, indent=2))
             return compose(instance, 'ps')
         if args.command in ('logs', 'restart'):
@@ -208,6 +212,10 @@ def main(argv=None):
                 raise DevError('Provide a command after exec.')
             return machine.job(args.command, command, args.timeout, getattr(args, 'input', None))
         if args.command == 'doctor':
+            if instance.scaffold.name == 'acp':
+                from .agentrq import Client
+                workspace = Client(instance).workspace()
+                print('PASS AgentRQ authentication and workspace; agent connected: ' + str(workspace.get('agentConnected', False)))
             return machine.job('services')
         if args.command == 'fixture':
             return machine.job('fixture', [args.action, args.value])

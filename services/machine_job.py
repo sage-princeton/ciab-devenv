@@ -136,7 +136,9 @@ def main():
         directory = Path(data['artifacts'])
         data['files'] = [{'path': str(p.relative_to(directory)), 'bytes': p.stat().st_size,
                           'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
-                         for p in directory.rglob('*') if p.is_file() and not p.is_symlink()]
+                         for p in directory.rglob('*') if p.is_file() and not p.is_symlink()
+                         and not any(part in ('.git', '.codex', '.claude', '.mcp.json', '.aws', '.ssh', '__pycache__')
+                                     or part.startswith('.env') for part in p.relative_to(directory).parts)]
         (output / 'report.json').write_text(scrub(json.dumps(data, indent=2), values) + '\n')
     return code
 

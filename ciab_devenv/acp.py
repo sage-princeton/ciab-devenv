@@ -13,22 +13,47 @@ from .machine import new_id, scrub
 def task_control(machine, args):
     if machine.instance.scaffold.name != 'acp':
         raise DevError('Task controls require an ACP instance.')
-    machine.require_provisioned()
-    client = Client(machine.instance)
-    task = client.task(args.task_id)['task']
-    if args.action == 'reply':
-        if not args.message_file:
-            raise DevError('Reply requires --message-file PATH.')
-        client.task(args.task_id, '/reply', {'reply': {'text': args.message_file.read_text()}})
-    elif args.action == 'cancel':
-        try:
-            client.task(args.task_id, '/stop', {})
-        finally:
-            machine.call('systemctl', 'stop', machine.instance.scaffold.service)
-        client.task(args.task_id, '/status', {'status': {'value': 'rejected'}}, 'PATCH')
-    print(scrub(json.dumps(client.task(args.task_id)['task'] if args.action != 'show' else task, indent=2),
-                machine.instance.process_env()))
-    return 0
+    receipt = machine.require_provisioned()
+    directory = machine.instance.root / 'reports' / new_id()
+    data = dict(receipt, suite='task-' + args.action, task_id=args.task_id,
+                run_id=directory.name, devenv=source_info(ROOT), command=['devctl', 'task', args.action, args.task_id])
+    started = time.monotonic()
+    code = 2
+    log = []
+    try:
+        client = Client(machine.instance)
+        task = client.task(args.task_id)['task']
+        if args.action == 'reply':
+            if not args.message_file:
+                raise DevError('Reply requires --message-file PATH.')
+            message = args.message_file.read_text()
+            data['message_sha256'] = hashlib.sha256(message.encode()).hexdigest()
+            client.task(args.task_id, '/reply', {'reply': {'text': message}})
+        elif args.action == 'cancel' and task['status'] not in ('completed', 'rejected'):
+            if any(t['id'] != args.task_id for t in client.tasks('ongoing')):
+                raise DevError('Another task is running; refusing to stop its gateway.')
+            try:
+                client.task(args.task_id, '/stop', {})
+            except (DevError, OSError) as error:
+                log.append(f'Stop notification unavailable; stopping the local service: {error}')
+            try:
+                client.task(args.task_id, '/status', {'status': {'value': 'rejected'}}, 'PATCH')
+            finally:
+                machine.stop_run()
+        data['task'] = client.task(args.task_id)['task']
+        code = 0
+    except Exception as error:
+        log.append(f'{type(error).__name__}: {error}')
+    data.update(exit_code=code, status='succeeded' if code == 0 else 'failed',
+                elapsed_seconds=round(time.monotonic() - started, 2))
+    values = machine.instance.redactions()
+    private_write(directory / 'report.json', scrub(json.dumps(data, indent=2), values) + '\n')
+    private_write(directory / 'output.log', scrub('\n'.join(log), values))
+    print(scrub(json.dumps(data.get('task', {}), indent=2), values))
+    if log:
+        print(scrub('\n'.join(log), values))
+    print(f'Evidence: {directory}/report.json; status={data["status"]}')
+    return code
 
 
 def run_task(machine, args):
@@ -56,12 +81,12 @@ def run_task(machine, args):
                 machine=machine.name, events=[], status='running',
                 command=['devctl', args.command],
                 input={'task_id': task_id} if task_id else {'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()})
+    directory.mkdir(parents=True, mode=0o700)
     log = []
     code = 2
     service = machine.instance.scaffold.service
     try:
-        machine.call('systemctl', 'start', service)
-        machine.call('systemctl', 'start', 'crux-codex-live-trace', check=False, capture=True)
+        machine.call('systemctl', 'start', *machine.run_units())
         while not client.workspace().get('agentConnected'):
             if time.monotonic() - started >= min(args.timeout, 60):
                 raise TimeoutError('ACP gateway did not connect to its workspace.')
@@ -87,6 +112,8 @@ def run_task(machine, args):
                 raise TimeoutError('Task exceeded the wall time limit.')
             state_result = machine.call('systemctl', 'is-active', service, capture=True, check=False)
             if state_result.stdout.strip() != 'active':
+                if client.task(task_id)['task']['status'] in ('completed', 'rejected', 'blocked'):
+                    continue
                 raise DevError('ACP gateway exited before task completion.')
             time.sleep(1)
     except KeyboardInterrupt:
@@ -103,7 +130,11 @@ def run_task(machine, args):
                 client.task(task_id, '/stop', {})
             except Exception as error:
                 log.append(f'Stop notification unavailable: {error}')
-        machine.call('systemctl', 'stop', service, 'crux-codex-live-trace', check=False, capture=True)
+        try:
+            machine.stop_run()
+        except Exception as error:
+            log.append(f'Service cleanup failed: {error}')
+            code = code or 2
         if code in (124, 130) and task_id:
             try:
                 client.task(task_id, '/status', {'status': {'value': 'rejected'}}, 'PATCH')
@@ -113,14 +144,21 @@ def run_task(machine, args):
             snapshot_code = machine.job('snapshot', [data['started_at']], timeout=30)
             if isinstance(machine.last_report, Path):
                 data['snapshot_report'] = str(machine.last_report / 'report.json')
+                private_write(directory / 'machine.json', (machine.last_report / 'report.json').read_text())
+                log.append((machine.last_report / 'output.log').read_text())
             code = code or snapshot_code
         except Exception as error:
             log.append(f'Evidence snapshot failed: {error}')
             code = code or 2
+        if task_id:
+            try:
+                data['task'] = client.task(task_id)['task']
+            except Exception as error:
+                log.append(f'Final task state unavailable: {error}')
         data.update(status='succeeded' if code == 0 else 'failed', exit_code=code,
                     elapsed_seconds=round(time.monotonic() - started, 2))
-        private_write(directory / 'report.json', scrub(json.dumps(data, indent=2), machine.instance.process_env()) + '\n')
-        private_write(directory / 'output.log', scrub('\n'.join(log), machine.instance.process_env()))
-        print(scrub('\n'.join(log), machine.instance.process_env()))
+        private_write(directory / 'report.json', scrub(json.dumps(data, indent=2), machine.instance.redactions()) + '\n')
+        private_write(directory / 'output.log', scrub('\n'.join(log), machine.instance.redactions()))
+        print(scrub('\n'.join(log), machine.instance.redactions()))
         print(f'Evidence: {directory}/report.json; status={data["status"]}')
     return code
