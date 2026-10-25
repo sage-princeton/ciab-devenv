@@ -26,8 +26,8 @@ Reusable helpers live in `verification/`. See [AGENTS.md](AGENTS.md) for agent g
 ## Developer runbook: start a local CRUX
 
 Prerequisites: macOS, OrbStack running, Docker Compose v2, Python 3.11+, Git,
-OpenSSL and direnv. Use a CRUX worktree containing SDK provisioning
-(`src/ec2-workspaces/scaffolds/sdk.sh`, merged in CRUX PR #23).
+OpenSSL and direnv. Use a CRUX worktree containing the selected production scaffold module
+(`src/ec2-workspaces/scaffolds/sdk.sh` or `acp.sh`).
 
 1. **Prepare a single PR worktree and drop-in.** Follow its `OPERATOR_GUIDE.md`
    and the upstream SDK README. Resolve placeholders, set bounded budgets, and
@@ -139,14 +139,36 @@ tasks must be requeued with `--task-id` or cancelled before starting another.
 Requeueing starts a new agent session against the existing task and workspace;
 prior conversation context depends on what the vendor agent retrieves from AgentRQ. Task controls remain
 available from another terminal during a run. Reports include controller task IDs,
-status transitions and a reference to the machine journal/artifact snapshot.
+status transitions, installed versions, and a machine journal/artifact snapshot.
+`report REPORT_ID --output /tmp/report` exports the task report, sanitized logs,
+and `machine.json` together. Task show/reply/cancel commands also create reports;
+retain the run's specific report ID because `latest` includes these controls.
+Provider credentials used for redaction are kept in the instance's private
+host state so later commands still scrub them when invoked outside direnv.
+
+ACP artifacts are indexed under `/srv/crux-run`; credential/configuration
+folders such as `.codex`, `.claude`, `.mcp.json`, `.aws` and `.env*` are excluded.
+The final report records controller task state separately from command success.
+Inspect the actual output and assertions in addition to a successful task.
+
+The controller remains local and persists across `down`/`up`. The gateway and
+trace exporter stay disabled until a run starts. Cancellation first requests an
+AgentRQ stop, then stops the local gateway even if the notification is unavailable.
+It refuses to stop a different active task. Task replies persist in AgentRQ; after
+a stopped run, requeue with `--task-id` and have the agent inspect the task's
+messages. Model budget limits remain caller-owned; the wall limit bounds the run,
+with additional time needed to stop services and collect evidence.
+
+Claude Code provisioning/settings are supported, but live Claude validation was
+deferred by the owner. OpenRouter routing is also not covered by the local live
+validation. These paths require their own dedicated test credentials.
 
 ## Source changes and generic commands
 
 Source is copied into root-owned `/source` from **tracked files, including local
 edits**; `.git`, ignored/untracked files and `.env*` are excluded. Add intended new
-source files to the Git index before testing. The production scaffold is installed
-at `/opt/crux-sdk-scaffold`; the agent runs as `ubuntu`. No source checkout, host
+source files to the Git index before testing. SDK code is installed at `/opt/crux-sdk-scaffold`; ACP vendor tools use the
+production installer's locations. The agent runs as `ubuntu`. No source checkout, host
 home directory, Docker socket, or SSH agent is shared with the machine.
 
 Reprovision after changing source, dependencies, drop-in configuration, model
@@ -176,8 +198,8 @@ A later staged input replaces `/input`.
 ./devctl --name sdk probe --timeout 180
 ```
 
-`check` checks the installed drop-in; `probe` runs the production SDK/Codex probe
-again. Both use the provisioned environment. Test tools pytest, Ruff and ShellCheck
+`check` validates the SDK drop-in or checks that the ACP unit is installed.
+`probe` runs the SDK/Codex probe or submits a bounded ACP task through AgentRQ. Both use the provisioned environment. Test tools pytest, Ruff and ShellCheck
 are installed for generic verification. `machine exec -- COMMAND` is an explicit
 root diagnostic escape hatch, with no timeout or evidence wrapper. Prefer `exec`
 for tests and `run` for end-to-end CRUX execution.
@@ -191,7 +213,8 @@ stopped by `down`.
 
 | Component | Provided behavior |
 | --- | --- |
-| Run box | Isolated Ubuntu 24.04, production SDK installer/configuration/systemd service |
+| Run box | Isolated Ubuntu 24.04, selected production installer/configuration/systemd service |
+| AgentRQ / ACP | Pinned local controller, production gateway, Codex or Claude Code; real provider inference |
 | SDK/Codex | Selected source, actual provider inference, production sandbox |
 | Langfuse | Web/worker, PostgreSQL, ClickHouse, Redis and S3 storage |
 | Cost tracker | Selected checkout's actual Lambda behind an HTTP adapter; unavailable when absent |
@@ -275,6 +298,9 @@ and generated artifacts are not automatically exported. Review evidence before s
 ./devctl --name sdk reset --confirm sdk
 ```
 
+Instances created before the dedicated local CA was introduced must be
+reprovisioned before `up`; this updates machine trust without changing macOS trust.
+
 For old container-based instances, use a fresh name/port or intentionally reset
 before provisioning. The removed runner's legacy Docker work volume is not
 migrated or automatically deleted; preserve/export any old evidence before
@@ -285,7 +311,7 @@ and `delete` are replaced by `bootstrap`/`provision` and confirmed `reset`.
 
 Run the commands in [tests/README.md](tests/README.md), then practically exercise
 changed startup/execution/recovery/cleanup paths. Keep feature-specific scripts
-outside git. Future scaffold adapters can reuse local services, machine lifecycle
-and reporting; the SDK adapter currently invokes production provisioning.
+outside git. SDK and ACP adapters share local services, machine lifecycle and reporting.
+Both invoke the selected worktree's production provisioning.
 
 Prototype tracked by [AE-269](https://linear.app/agent-evals/issue/AE-269).

@@ -13,6 +13,7 @@ Reusable methods belong in [verification/](../verification/README.md).
 | File | Coverage |
 | --- | --- |
 | `test_environment.py` | Tracked local edits, credential exclusions, named-instance isolation, private permissions, input staging and explicit endpoint overrides |
+| `test_acp.py` | Platform settings, task lifecycle, cancellation fallback, timeout/interruption, workspace scope and redaction |
 | `test_machine.py` | Provisioning capability/source drift, stopped-machine handling, evidence retrieval and credential redaction |
 | `test_fixtures.py` | HTTP authentication, injected failures/recovery, retained message identities and caller-configured cloud responses |
 
@@ -32,3 +33,10 @@ For orchestration changes, also exercise the changed commands against OrbStack:
 startup, health, execution, reporting, restart or instance-scoped cleanup as
 applicable. Keep assertions here focused on environment behavior. Follow
 [AGENTS.md](../AGENTS.md) when recording and sharing evidence.
+
+For ACP changes, validate the real controller/gateway/vendor path, then inspect
+actual output, status transitions, provider observations and cleanup. Check
+requeue/reply behavior, wall time expiry and cancellation; also run the SDK
+regression after shared infrastructure changes. Record deferred platforms/providers
+as coverage gaps, never as passing. Detailed prompts, assertions and evidence stay
+in PR descriptions and temporary files outside the repository.

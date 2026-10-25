@@ -48,7 +48,7 @@ SDK = Scaffold('sdk', 'openai-agents', 'crux-sdk-run', '/opt/crux-sdk-scaffold/.
 
 
 ACP = Scaffold('acp', 'codex', 'crux-acp-gateway', '/opt/ciab-tools/.venv/bin/python', '/devenv',
-               '/srv/crux-run/run-harness/workspace', '/srv/crux-run/state',
+               '/srv/crux-run', '/srv/crux-run/state',
                ('src/ec2-workspaces/install-run.sh', 'src/ec2-workspaces/configure-run.sh',
                 'src/ec2-workspaces/scaffolds/acp.sh', 'src/ec2-workspaces/agent-config.sh',
                 'src/ec2-control/configure-control.sh', 'src/ec2-workspaces/placeholders-base.txt.example'))
@@ -59,5 +59,8 @@ def get_scaffold(name='sdk', platform=None):
     if name == 'sdk' and platform in (None, 'openai-agents'):
         return SDK
     if name == 'acp' and platform in (None, 'codex', 'claude'):
-        return replace(ACP, platform=platform or 'codex')
+        extra = ('agentrq/claude/.claude/hooks/langfuse_hook.py',) if platform == 'claude' else (
+            'src/ec2-workspaces/codex-flush-turns.py', 'src/ec2-workspaces/codex-live-trace.py',
+            'src/ec2-workspaces/live_trace/__init__.py')
+        return replace(ACP, platform=platform or 'codex', required_files=ACP.required_files + extra)
     raise DevError('Unsupported scaffold: ' + str(name))

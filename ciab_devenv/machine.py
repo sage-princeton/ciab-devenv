@@ -130,11 +130,28 @@ lines += [v['edge']+' langfuse.test cost.test fixtures.test agentrq.test '+v['ru
 p.write_text('\\n'.join(lines)+'\\n')
 ''')
 
+    def run_units(self):
+        units = [self.instance.scaffold.service]
+        if self.instance.scaffold.name == 'acp' and self.instance.scaffold.platform == 'codex':
+            result = self.call('systemctl', 'show', '--property=LoadState', '--value', 'crux-codex-live-trace',
+                               capture=True, check=False)
+            if result.stdout.strip() == 'loaded':
+                units.append('crux-codex-live-trace')
+        return units
+
+    def stop_run(self):
+        self.call('systemctl', 'stop', *self.run_units(), capture=True, check=False)
+        for unit in self.run_units():
+            result = self.call('systemctl', 'is-active', unit, capture=True, check=False)
+            if result.stdout.strip() not in ('inactive', 'failed', 'unknown'):
+                self.stop()
+                raise DevError('Run service did not stop; stopped the isolated machine instead.')
+
     def stop(self):
         state = self.state()
         if state and state['state'] == 'running':
             try:
-                self.call('systemctl', 'stop', self.instance.scaffold.service, 'crux-codex-live-trace.service', 'ciab-job-*.service', 'ciab-command-*.service', check=False)
+                self.call('systemctl', 'stop', *self.run_units(), 'ciab-job-*.service', 'ciab-command-*.service', check=False)
             finally:
                 subprocess.run(['orb', 'stop', self.name], check=True)
 
@@ -217,8 +234,9 @@ p.write_text('\\n'.join(lines)+'\\n')
                                          'RUNPOD_API_KEY', 'CIAB_FIXTURE_TOKEN', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY')}
         local.update(CIAB_FIXTURE_URL='https://fixtures.test', CIAB_STORAGE_PASSWORD=env['CIAB_PASSWORD'])
         settings = {'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
-                    'has_manifest': bool(args.manifest), 'environment': local, 'redactions': secret_values(values)}
+                    'has_manifest': bool(args.manifest), 'environment': local, 'redactions': secret_values({k: v for k, v in values.items() if k != 'AGENTRQ_WORKSPACE_ID'})}
         private_write(settings_file, json.dumps(settings))
+        private_write(self.instance.root / 'redactions.json', json.dumps(settings['redactions']))
         run_id = new_id()
         report_dir = self.instance.root / 'reports' / run_id
         report_dir.mkdir(parents=True, mode=0o700)
@@ -248,7 +266,8 @@ p.write_text('\\n'.join(lines)+'\\n')
             raw.unlink()
             print(clean[-12000:])
             receipt = {'source': source_revision, 'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins,
-                       'workspace_id': self.instance.data.get('agentrq_workspace_id'), 'model': settings['model'], 'effort': settings['effort'],
+                       'workspace_id': self.instance.data.get('agentrq_workspace_id'),
+                       'controller_image': self.instance.data.get('agentrq_image'), 'model': settings['model'], 'effort': settings['effort'],
                        'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()) if args.drop_in else None,
                        'provisioned_devenv': devenv_revision, 'provisioning_inputs': inputs,
                        'services': {k: env[k] for k in ('LANGFUSE_BASE_URL', 'COST_TRACKER_URL', 'CIAB_RUNPOD_HOST')}}
@@ -257,6 +276,10 @@ p.write_text('\\n'.join(lines)+'\\n')
                           devenv=source_info(ROOT), machine=self.name)
             private_write(report_dir / 'report.json', json.dumps(report, indent=2) + '\n')
             if code == 0:
+                versions = self.call('cat', '/etc/ciab-versions.json', capture=True)
+                receipt['versions'] = json.loads(versions.stdout)
+                report['versions'] = receipt['versions']
+                private_write(report_dir / 'report.json', json.dumps(report, indent=2) + '\n')
                 private_write(self.receipt, json.dumps(receipt, indent=2))
             print(f'Evidence: {report_dir}/report.json')
             return code

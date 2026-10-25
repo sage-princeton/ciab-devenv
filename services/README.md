@@ -23,6 +23,7 @@ the stack and configure clients.
 | `mailbox_cli.py` | Downloadable CLI reading caller-provisioned mailbox authentication |
 | `machine_setup.py` | Local CA/SSM setup and invocation of production install/configure hooks with caller-supplied inputs |
 | `sdk_setup.py` | SDK source staging and production model settings |
+| `acp_setup.py` | Vendor hook staging, version/model/provider settings, and production gateway lifecycle |
 
 Compose mounts fixture code read-only. Restart a service container after changing
 its Python code. Provisioning copies machine adapters and reusable helpers to
@@ -39,8 +40,10 @@ unless the explicit live override is selected.
 
 Machine evidence lives in `/var/lib/ciab/reports/<id>` and is cached on the host
 under the instance's `reports/<id>`. Generic command artifacts live in `/work/runs/<id>`.
-The production workspace is `/srv/crux-run/run-harness/workspace`, with state in
-`/srv/crux-run/state`. `machine_setup.py` invokes upstream install/configure hooks;
+SDK workspace/state are `/srv/crux-run/run-harness/workspace` and
+`/srv/crux-run/state`. ACP starts at `/srv/crux-run`; its snapshot covers that
+root with credential/configuration directories excluded. Host-side task reports
+include a copy of the machine snapshot and sanitized journal. `machine_setup.py` invokes upstream install/configure hooks;
 its systemd override adds local service settings without replacing production
 ExecStart, user, restart policy or sandbox settings. A zero exit code records command
 success, not feature acceptance. Reports export sanitized logs and metadata;
@@ -48,3 +51,9 @@ the caller inspects artifacts and records assertions in the implementing PR.
 
 Verify adapters with [tests/](../tests/README.md), `doctor`, actual client calls
 and the upstream PR's commands. Keep scenario-specific logic out of these files.
+
+ACP adds `compose.acp.yaml`: the real hash-pinned controller with a private volume,
+and a loopback-only dashboard listener. A separate CA signs the edge server's
+certificate; only instance clients trust it. `doctor` checks controller login and
+workspace access separately from gateway connectivity. Provisioning leaves agent
+units disabled; `run` explicitly starts them and stops them when observation ends.
