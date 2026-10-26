@@ -2,7 +2,27 @@
 import hashlib
 import importlib.util
 import sys
+from importlib import import_module
 from pathlib import Path
+
+
+def bundle(source, settings, inputs, output):
+    source = Path(source)
+    if not (source / 'devops/crux_devops/bundle.py').is_file():
+        return None
+    production = contracts(source, required=True)
+    configuration = {'system_parameter': '/crux/local/system/env'}
+    if settings['scaffold'] == 'acp':
+        configuration['control_mcp_base'] = 'https://agentrq.test'
+    run = production.Run.parse({
+        'version': 1, 'name': settings['run_slug'], 'box': 'box',
+        'scaffold': {'type': 'agentrq' if settings['scaffold'] == 'acp' else settings['scaffold'],
+                     'platform': settings['platform'], 'provider': settings['provider'],
+                     'model': settings['model'], 'effort': settings['effort'],
+                     'drop_in': 'run-harness', 'configuration': configuration},
+        'resources': [{'id': 'box', 'type': 'local.box', 'config': {'region': 'us-east-1'}}],
+    })
+    return import_module(production.__name__ + '.bundle').assemble(source, run, output, drop_in=inputs)
 
 
 def contracts(source, *, required=False):

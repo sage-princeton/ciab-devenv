@@ -29,7 +29,12 @@ def assignments(path, keys):
     return result
 
 
-def pins(source):
+def pins(source, platform='codex'):
+    if (source / 'devops/crux_devops/dependencies.py').is_file():
+        from importlib import import_module
+        from devops.production import contracts
+        module = import_module(contracts(source, required=True).__name__ + '.dependencies')
+        return module.controller_dependencies(source) | module.scaffold_dependencies(source, platform)
     result = assignments(source_path(source, 'workspace', 'placeholders-base.txt.example'), PIN_KEYS)
     result.update(assignments(source_path(source, 'controller', 'configure-control.sh'),
                               ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256', 'AGENTRQ_SQLITE_DSN')))
@@ -80,12 +85,24 @@ class Client:
         self.instance = instance
         self.base = f'https://localhost:{instance.data["port"] + 1}/api/v1'
         context = ssl.create_default_context(cafile=str(instance.root / 'certs/ca.crt'))
+        self.production = None
+        if (instance.source / 'devops/crux_devops/agentrq.py').is_file():
+            from importlib import import_module
+            from devops.production import contracts
+            module = import_module(contracts(instance.source, required=True).__name__ + '.agentrq')
+            self.production = module.Client(url=self.base.removesuffix('/api/v1'), token=instance.data['agentrq_root_token'], ssl_context=context)
+            return
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
             urllib.request.HTTPSHandler(context=context), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.request('/auth/root/login', {'rootToken': instance.data['agentrq_root_token']})
         self.request('/auth/user')
 
     def request(self, path, body=None, method=None):
+        if self.production is not None:
+            try:
+                return self.production.request(path, body, method)
+            except RuntimeError as error:
+                raise DevError(str(error)) from None
         request = urllib.request.Request(self.base + path, method=method,
             data=None if body is None else json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
         try:
