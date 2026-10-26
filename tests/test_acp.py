@@ -14,6 +14,22 @@ from devops.acp_setup import settings_environment
 
 
 class ACPTests(unittest.TestCase):
+    def test_manifest_source_does_not_require_legacy_placeholders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            scaffold = get_scaffold('acp', 'codex')
+            for name in scaffold.required_files:
+                if name.endswith('placeholders-base.txt.example'):
+                    continue
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            manifest = source / 'scaffolds/codex/package.json'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{}')
+            with patch('ciab_devenv.scaffolds.source_info'):
+                scaffold.validate_source(source)
+
     def test_registry_image_requires_digest_and_records_installed_image(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'CIAB_STATE_ROOT': tmp}):
             instance = Environment('registry')
