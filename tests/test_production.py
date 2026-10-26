@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from devops.production import contracts, scaffold_settings
+from devops.production import bundle, contracts, scaffold_settings
 
 
 class ProductionContractTests(unittest.TestCase):
@@ -34,6 +34,22 @@ class ProductionContractTests(unittest.TestCase):
         for _ in range(2):
             with self.assertRaisesRegex(ValueError, 'broken'):
                 contracts(root)
+
+    def test_legacy_source_has_no_bundle(self):
+        self.assertIsNone(bundle(self.root, {}, self.root, self.root / 'payload'))
+
+    def test_bundle_uses_selected_source_and_caller_inputs(self):
+        source = self.package('bundle', 'class Run:\n    @staticmethod\n    def parse(value): return value\n')
+        (source / 'devops/crux_devops/bundle.py').write_text(
+            'def assemble(source, run, output, *, drop_in):\n'
+            '    return dict(source=str(source), run=run, inputs=str(drop_in), output=str(output))\n')
+        inputs, output = self.root / 'inputs', self.root / 'payload'
+        settings = dict(scaffold='acp', platform='claude', provider='direct', model='model', effort='low', run_slug='local')
+        result = bundle(source, settings, inputs, output)
+        self.assertEqual(result['source'], str(source))
+        self.assertEqual(result['inputs'], str(inputs))
+        self.assertEqual(result['run']['scaffold']['configuration']['control_mcp_base'], 'https://agentrq.test')
+        self.assertEqual(result['run']['scaffold']['platform'], 'claude')
 
     def test_symlink_cannot_load_contracts_outside_selected_source(self):
         outside = self.package('outside', 'VERSION = 1\n')

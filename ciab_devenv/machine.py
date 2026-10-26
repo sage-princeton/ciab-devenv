@@ -178,7 +178,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         runtime_pins = {}
         if scaffold.name == 'acp':
             from .agentrq import pins
-            runtime_pins = pins(self.instance.source)
+            runtime_pins = pins(self.instance.source, scaffold.platform)
         self.require_idle()
         self.receipt.unlink(missing_ok=True)
         source_revision = source_info(self.instance.source)
@@ -193,9 +193,16 @@ p.write_text('\\n'.join(lines)+'\\n')
             (staging / 'drop-in/workspace').mkdir(parents=True)
         if args.manifest:
             shutil.copyfile(args.manifest, staging / 'provision.json')
+            shutil.copyfile(args.manifest, staging / 'drop-in/provision.json')
         inputs = {'drop_in': str(args.drop_in.resolve()) if args.drop_in else None, 'manifest': str(args.manifest.resolve()) if args.manifest else None,
                   'files': [{'path': str(file.relative_to(staging)), 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
                             for file in sorted(staging.rglob('*')) if file.is_file()]}
+        env = self.instance.compose_env()
+        settings = {'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider,
+                    'pins': runtime_pins, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'],
+                    'run_slug': self.instance.project}
+        from devops.production import bundle
+        payload = bundle(self.instance.source, settings, staging / 'drop-in', self.instance.root / 'production-bundle.tar.gz')
         from devops.resources import lifecycle
         resources = lifecycle(self.instance, self)
         if resources is not None:
@@ -230,6 +237,8 @@ p.write_text('\\n'.join(lines)+'\\n')
         with tarfile.open(archive, 'w:gz') as output:
             output.add(self.instance.root / 'source', arcname='source')
             output.add(staging, arcname='input')
+            if payload:
+                output.add(payload['path'], arcname='production-bundle.tar.gz')
             for name in ('services', 'devops', 'monitoring', 'ciab_devenv', 'verification', 'tests'):
                 output.add(ROOT / name, arcname='devenv/' + name,
                            filter=lambda member: None if '__pycache__' in member.name else member)
@@ -237,12 +246,13 @@ p.write_text('\\n'.join(lines)+'\\n')
         secret = self.instance.root / 'machine-secrets.json'
         settings_file = self.instance.root / 'machine-settings.json'
         private_write(secret, json.dumps(values))
-        env = self.instance.compose_env()
         local = {key: env[key] for key in ('CRUX_MODEL', 'CRUX_REASONING_EFFORT', 'COST_TRACKER_URL', 'COST_TRACKER_TOKEN',
                                          'RUNPOD_API_KEY', 'CIAB_FIXTURE_TOKEN', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY')}
         local.update(CIAB_FIXTURE_URL='https://fixtures.test', CIAB_STORAGE_PASSWORD=env['CIAB_PASSWORD'])
-        settings = {'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins, 'model': env['CRUX_MODEL'], 'effort': env['CRUX_REASONING_EFFORT'], 'run_slug': self.instance.project,
-                    'has_manifest': bool(args.manifest), 'environment': local, 'redactions': secret_values({k: v for k, v in values.items() if k != 'AGENTRQ_WORKSPACE_ID'})}
+        settings.update(has_manifest=bool(args.manifest), environment=local, bundle=payload,
+                        redactions=secret_values({k: v for k, v in values.items() if k != 'AGENTRQ_WORKSPACE_ID'}))
+        if payload:
+            settings['owner'] = json.loads((self.instance.root / 'resources.json').read_text())['owner']
         private_write(settings_file, json.dumps(settings))
         private_write(self.instance.root / 'redactions.json', json.dumps(settings['redactions']))
         run_id = new_id()
@@ -278,6 +288,7 @@ p.write_text('\\n'.join(lines)+'\\n')
                        'controller_image': self.instance.data.get('agentrq_image'), 'model': settings['model'], 'effort': settings['effort'],
                        'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()) if args.drop_in else None,
                        'provisioned_devenv': devenv_revision, 'provisioning_inputs': inputs,
+                       'bundle': payload,
                        'services': {k: env[k] for k in ('LANGFUSE_BASE_URL', 'COST_TRACKER_URL', 'CIAB_RUNPOD_HOST')}}
             report = dict(receipt, run_id=run_id, suite='provision', exit_code=code,
                           status='succeeded' if code == 0 else 'failed', elapsed_seconds=round(time.monotonic()-started, 2),
