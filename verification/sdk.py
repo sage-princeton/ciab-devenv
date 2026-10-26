@@ -12,6 +12,7 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from devops.source import source_path
 
 
 
@@ -43,7 +44,7 @@ def langfuse(path):
 
 
 def require(path, text, issue):
-    if text not in Path("/source/src/sdk-scaffold/crux_scaffold", path).read_text():
+    if text not in source_path("/source", "sdk", "crux_scaffold", path).read_text():
         raise AssertionError(
             f"UNAVAILABLE: this PR stack does not implement {issue}; select the implementing PR stack identified by the implementation PR"
         )

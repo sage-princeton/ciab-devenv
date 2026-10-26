@@ -29,7 +29,7 @@ def main():
     sys.path.insert(0, str(staging / 'devenv'))
     from ciab_devenv.scaffolds import get_scaffold
     scaffold = get_scaffold(settings.get('scaffold', 'sdk'), settings.get('platform'))
-    adapter = import_module('services.' + scaffold.name + '_setup')
+    adapter = import_module('devops.' + scaffold.name + '_setup')
     run(['apt-get', 'update', '-qq'])
     run(['apt-get', 'install', '-y', '-qq', 'ca-certificates', 'curl', 'python3', 'jq', 'unzip', 'shellcheck'])
     shutil.copy2(staging / 'local.crt', '/usr/local/share/ca-certificates/ciab-local.crt')
@@ -42,7 +42,8 @@ def main():
     replace_tree(staging / 'source', '/source')
     replace_tree(staging / 'devenv', '/devenv')
     run(['chmod', '-R', 'a+rX,go-w', '/source', '/devenv'])
-    source = Path('/source/src/ec2-workspaces')
+    from devops.source import source_path
+    source = source_path('/source', 'workspace')
     Path('/usr/local/lib/crux').mkdir(parents=True, exist_ok=True)
     for name in ('run_provision.py', 'run_service_auth.py'):
         if (source / name).is_file():

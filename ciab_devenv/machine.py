@@ -222,7 +222,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         with tarfile.open(archive, 'w:gz') as output:
             output.add(self.instance.root / 'source', arcname='source')
             output.add(staging, arcname='input')
-            for name in ('services', 'ciab_devenv', 'verification', 'tests'):
+            for name in ('services', 'devops', 'monitoring', 'ciab_devenv', 'verification', 'tests'):
                 output.add(ROOT / name, arcname='devenv/' + name,
                            filter=lambda member: None if '__pycache__' in member.name else member)
             output.add(self.instance.root / 'certs/ca.crt', arcname='local.crt')
@@ -251,7 +251,7 @@ p.write_text('\\n'.join(lines)+'\\n')
             raw = report_dir / 'output.raw'
             with raw.open('w') as stream:
                 process = subprocess.Popen(['orb', 'run', '--machine', self.name, '--user', 'root', '--workdir', '/tmp',
-                                            'python3', '/opt/ciab-staging/devenv/services/machine_setup.py'],
+                                            'python3', '/opt/ciab-staging/devenv/devops/machine_setup.py'],
                                            stdout=stream, stderr=subprocess.STDOUT)
                 print(f'Provisioning {self.name}; log: {raw} (private). Production probes call the model provider.', flush=True)
                 try:
@@ -318,7 +318,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         unit = 'ciab-job-' + run_id.lower()
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', unit,
                    '--property=TimeoutStopSec=30', '--property=KillMode=mixed',
-                   '/usr/bin/python3', '/devenv/services/machine_job.py', remote]
+                   '/usr/bin/python3', '/devenv/monitoring/machine_job.py', remote]
         try:
             result = self.call(*command, check=False)
             code = result.returncode

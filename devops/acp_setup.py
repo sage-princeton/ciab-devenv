@@ -2,13 +2,21 @@
 import shutil
 from pathlib import Path
 
-from services.machine_setup import run
+from devops.machine_setup import run
+from devops.source import source_path
 
 
 def prepare(settings):
+    if settings['platform'] == 'codex':
+        source = source_path('/source', 'codex_tracing')
+        target = source_path('/source', 'workspace')
+        if source != target:
+            for name in ('codex-flush-turns.py', 'codex-live-trace.py'):
+                shutil.copy2(source / name, target / name)
+            shutil.copytree(source / 'live_trace', target / 'live_trace', dirs_exist_ok=True)
     if settings['platform'] == 'claude':
-        shutil.copy2('/source/agentrq/claude/.claude/hooks/langfuse_hook.py',
-                     '/source/src/ec2-workspaces/langfuse_hook.py')
+        shutil.copy2(source_path('/source', 'claude_tracing', 'langfuse_hook.py'),
+                     source_path('/source', 'workspace', 'langfuse_hook.py'))
 
 
 def installed(scaffold):

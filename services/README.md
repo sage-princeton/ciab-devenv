@@ -14,16 +14,16 @@ the stack and configure clients.
 
 | File | Responsibility |
 | --- | --- |
-| `machine_job.py` | Bounded execution as ubuntu, production systemd run monitoring, timeout/interruption cleanup and sanitized reports |
+| `../monitoring/machine_job.py` | Bounded execution as ubuntu, production systemd run monitoring, timeout/interruption cleanup and sanitized reports |
 | `check_services.py` | Infrastructure connectivity/authentication diagnostics and fixture-control commands |
 | `Caddyfile` | Local HTTPS routing for Langfuse, cost and protocol fixtures |
 | `cost.py` | HTTP/API Gateway adapter loading the selected checkout's actual cost Lambda |
 | `fixtures.py` | Stateful SQLite-backed messages, mailbox, cloud fixture configuration and injected errors |
 | `slack_mcp.py` | MCP tools translating the pinned Slack CSV/tool contract to the local message service |
 | `mailbox_cli.py` | Downloadable CLI reading caller-provisioned mailbox authentication |
-| `machine_setup.py` | Local CA/SSM setup and invocation of production install/configure hooks with caller-supplied inputs |
-| `sdk_setup.py` | SDK source staging and production model settings |
-| `acp_setup.py` | Vendor hook staging, version/model/provider settings, and production gateway lifecycle |
+| `../devops/machine_setup.py` | Local CA/SSM setup and invocation of production install/configure hooks with caller-supplied inputs |
+| `../devops/sdk_setup.py` | SDK source staging and production model settings |
+| `../devops/acp_setup.py` | Vendor hook staging, version/model/provider settings, and production gateway lifecycle |
 
 Compose mounts fixture code read-only. Restart a service container after changing
 its Python code. Provisioning copies machine adapters and reusable helpers to
@@ -43,7 +43,7 @@ under the instance's `reports/<id>`. Generic command artifacts live in `/work/ru
 SDK workspace/state are `/srv/crux-run/run-harness/workspace` and
 `/srv/crux-run/state`. ACP starts at `/srv/crux-run`; its snapshot covers that
 root with credential/configuration directories excluded. Host-side task reports
-include a copy of the machine snapshot and sanitized journal. `machine_setup.py` invokes upstream install/configure hooks;
+include a copy of the machine snapshot and sanitized journal. `../devops/machine_setup.py` invokes upstream install/configure hooks;
 its systemd override adds local service settings without replacing production
 ExecStart, user, restart policy or sandbox settings. A zero exit code records command
 success, not feature acceptance. Reports export sanitized logs and metadata;

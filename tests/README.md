@@ -21,11 +21,11 @@ Run from the repository root in a configured instance:
 
 ```sh
 ./devctl --name sdk exec python -m unittest discover -s /devenv/tests -v
-./devctl --name sdk exec ruff check /devenv/ciab_devenv /devenv/services /devenv/verification /devenv/tests --no-cache
+./devctl --name sdk exec ruff check /devenv/ciab_devenv /devenv/devops /devenv/monitoring /devenv/services /devenv/verification /devenv/tests --no-cache
 ```
 
 Host checks are `python3 -m unittest discover -s tests -v`,
-`python3 -m compileall -q ciab_devenv services verification tests`, and `shellcheck devctl`.
+`python3 -m compileall -q ciab_devenv devops monitoring services verification tests`, and `shellcheck devctl`.
 The HTTP tests need permission to bind a local socket; use the provisioned machine when the
 host sandbox disallows it.
 
