@@ -46,6 +46,9 @@ def parser():
     p.add_argument('--name', default='dev')
     p.add_argument('--usage', action='store_true')
     sub = p.add_subparsers(dest='command')
+    s = sub.add_parser('plan', help='validate a Run with the selected source contracts; creates no environment')
+    s.add_argument('--source', type=Path, required=True)
+    s.add_argument('--spec', type=Path, required=True)
     for command in ('setup', 'bootstrap'):
         s = sub.add_parser(command, help='configure only' if command == 'setup' else 'configure, start services and provision Ubuntu')
         s.add_argument('--source', type=Path, default=DEFAULT_SOURCE)
@@ -123,6 +126,10 @@ def main(argv=None):
         return 0
     operation_lock = None
     try:
+        if args.command == 'plan':
+            from devops.production import contracts
+            print(json.dumps(contracts(args.source, required=True).Run.load(args.spec).plan(), indent=2))
+            return 0
         instance = Environment(args.name)
         if args.command not in ('status', 'logs', 'fixture', 'report', 'machine', 'task'):
             instance.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -229,7 +236,7 @@ def main(argv=None):
                 shutil.rmtree(instance.root)
             return result
         raise DevError('Unsupported command')
-    except (DevError, OSError, subprocess.CalledProcessError) as exc:
+    except (DevError, ValueError, TypeError, OSError, subprocess.CalledProcessError) as exc:
         print(f'devctl: {exc}', file=sys.stderr)
         return 2
     finally:

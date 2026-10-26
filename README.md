@@ -331,3 +331,10 @@ The production checkout owns Scaffold code and declares its component paths in
 `devops/layout.json`. Older PRs without that file retain their original paths.
 Archived OpenClaw code is never selected as an execution adapter. Box, Run,
 Scaffold, Invoker, Agent and Harness follow the production repository terminology.
+
+The selected production source also owns deployment contracts. Use
+`./devctl plan --source CRUX_WORKTREE --spec RUN.json` to validate and display its
+resource graph without creating an environment. During provisioning, local
+adapters consume that source's Scaffold environment and verify its service name.
+Older sources continue through the legacy adapter. Provider resource drivers
+and feature scenarios belong in production and its PRs, respectively.
