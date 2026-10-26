@@ -17,7 +17,11 @@ class Scaffold:
     required_files: tuple[str, ...]
 
     def validate_source(self, source):
-        missing = [name for name in self.required_files if not required_path(source, name).is_file()]
+        files = self.required_files
+        manifest = source / 'scaffolds' / self.platform / 'package.json'
+        if self.name == 'acp' and manifest.is_file():
+            files = tuple(name for name in files if not name.endswith('placeholders-base.txt.example'))
+        missing = [name for name in files if not required_path(source, name).is_file()]
         if missing:
             raise DevError(f'Selected source lacks {self.name.upper()} provisioning: ' + ', '.join(missing))
         source_info(source)
