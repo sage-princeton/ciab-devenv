@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from devops.production import bundle, contracts, scaffold_settings
+from devops.production import bundle, contracts, plan, scaffold_settings
 
 
 class ProductionContractTests(unittest.TestCase):
@@ -23,6 +23,19 @@ class ProductionContractTests(unittest.TestCase):
         two = self.package('two', 'VERSION = 2\n')
         self.assertEqual(contracts(one).VERSION, 1)
         self.assertEqual(contracts(two).VERSION, 2)
+
+    def test_controller_plan_uses_selected_source_without_cloud_operations(self):
+        source=self.package('controller', 'class Controller:\n    @staticmethod\n    def parse(value): return Controller()\n    def plan(self): return {"deployment":"controller"}\n')
+        spec=self.root/'controller.json'
+        spec.write_text('{"kind":"controller"}')
+        self.assertEqual(plan(source,spec), {'deployment':'controller'})
+
+    def test_older_source_cannot_silently_treat_controller_as_run(self):
+        source=self.package('older', 'class Run: pass\n')
+        spec=self.root/'controller.json'
+        spec.write_text('{"kind":"controller"}')
+        with self.assertRaisesRegex(ValueError,'Controller'):
+            plan(source,spec)
 
     def test_legacy_source_is_optional_but_explicit_plan_requires_contract(self):
         self.assertIsNone(scaffold_settings(self.root, {}))

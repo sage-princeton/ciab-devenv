@@ -349,3 +349,10 @@ subsequent model/input settings. Older production branches use the legacy path.
 A machine whose creation was interrupted before its identity receipt was saved
 requires ownership inspection; it is never silently adopted by name. Use fresh
 names when testing the new lifecycle rather than adopting old test environments.
+
+`devctl plan --source /path/to/crux-worktree --spec /private/deployment.json`
+uses the selected production contracts for either a Run or a `kind: controller`
+deployment. Planning does not contact AWS or start local infrastructure. Selecting
+an older source without controller contracts produces an explicit error. Controller
+EC2/EBS deployment remains a production Invoker operation; local AgentRQ is a
+reusable service fixture rather than an emulation of EBS mounting or public TLS.
