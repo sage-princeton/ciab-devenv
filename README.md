@@ -356,3 +356,21 @@ deployment. Planning does not contact AWS or start local infrastructure. Selecti
 an older source without controller contracts produces an explicit error. Controller
 EC2/EBS deployment remains a production Invoker operation; local AgentRQ is a
 reusable service fixture rather than an emulation of EBS mounting or public TLS.
+
+Dependency updates run weekly via `.github/dependabot.yml`, grouped by ecosystem;
+security fixes are explicitly excluded from groups and use immediate repository
+Dependabot alerts/security updates. Verification installs consume
+`devops/requirements-test.txt`; Compose supplies service image pins. AgentRQ's
+dynamic local image comes from the selected CRUX source's consumed controller
+manifest and is updated there. The scanner and Trivy binaries come from their
+Dependabot-managed Dockerfiles.
+
+The daily Service package audit preserves SPDX and vulnerability reports for fixed
+Compose images without reading private instance settings. It prints high/critical
+fixable findings for review; these are informational reports, not a new merge gate.
+Ubuntu package inventories from actual Boxes can be captured with
+`devctl --name NAME exec python3 -m verification.package_inventory`. The report
+contains installed binary/source versions, architecture and OS metadata; export
+it before reset. CRUX's daily apt audit covers its production package installer.
+APT packages, OrbStack/macOS and operator-supplied services are outside Dependabot's
+supported update ecosystems; inventory alone does not provide automatic patches.

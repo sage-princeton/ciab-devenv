@@ -1,0 +1,86 @@
+# Weekly version groups; security rules exclude every dependency from grouping.
+# Security updates use repository alerts immediately, independently of this schedule.
+version: 2
+updates:
+- package-ecosystem: pip
+  directories:
+  - /devops
+  - /.github
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/New_York
+  open-pull-requests-limit: 5
+  groups:
+    verification-tools:
+      applies-to: version-updates
+      patterns:
+      - '*'
+    individual-security-updates:
+      applies-to: security-updates
+      patterns:
+      - '*'
+      exclude-patterns:
+      - '*'
+- package-ecosystem: docker
+  directories:
+  - /.github/tools/secrets
+  - /.github/tools/trivy
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/New_York
+  open-pull-requests-limit: 5
+  groups:
+    ci-tools:
+      applies-to: version-updates
+      patterns:
+      - '*'
+    individual-security-updates:
+      applies-to: security-updates
+      patterns:
+      - '*'
+      exclude-patterns:
+      - '*'
+- package-ecosystem: docker-compose
+  directories:
+  - /
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/New_York
+  open-pull-requests-limit: 5
+  groups:
+    service-fixtures:
+      applies-to: version-updates
+      patterns:
+      - '*'
+    individual-security-updates:
+      applies-to: security-updates
+      patterns:
+      - '*'
+      exclude-patterns:
+      - '*'
+- package-ecosystem: github-actions
+  directories:
+  - /
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/New_York
+  open-pull-requests-limit: 5
+  groups:
+    workflow-actions:
+      applies-to: version-updates
+      patterns:
+      - '*'
+    individual-security-updates:
+      applies-to: security-updates
+      patterns:
+      - '*'
+      exclude-patterns:
+      - '*'
