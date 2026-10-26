@@ -338,3 +338,14 @@ resource graph without creating an environment. During provisioning, local
 adapters consume that source's Scaffold environment and verify its service name.
 Older sources continue through the legacy adapter. Provider resource drivers
 and feature scenarios belong in production and its PRs, respectively.
+
+When the selected source exports the shared lifecycle, bootstrap/provision use
+its resource graph for service fixtures and the isolated Box; `up` validates the
+same ownership before restarting, and `reset` tears down in reverse order.
+Private receipts, container/volume labels and the immutable OrbStack machine ID
+prevent an old environment from deleting a same-named replacement. The resource
+receipt records initial Scaffold settings; individual provisioning reports record
+subsequent model/input settings. Older production branches use the legacy path.
+A machine whose creation was interrupted before its identity receipt was saved
+requires ownership inspection; it is never silently adopted by name. Use fresh
+names when testing the new lifecycle rather than adopting old test environments.

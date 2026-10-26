@@ -98,6 +98,10 @@ def parser():
 
 
 def down(instance, machine):
+    from devops.resources import lifecycle
+    resources = lifecycle(instance, machine)
+    if resources is not None:
+        resources.check()
     try:
         machine.stop()
     finally:
@@ -178,9 +182,16 @@ def main(argv=None):
                 raise DevError('This instance uses legacy TLS certificates. Reprovision before up.')
             if not machine.receipt.exists():
                 raise DevError('Use bootstrap or provision --drop-in PATH to install the machine first.')
-            result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
+            from devops.resources import lifecycle
+            resources = lifecycle(instance, machine)
+            if resources is not None:
+                resources.apply()
+                result = 0
+            else:
+                result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
             if not result:
-                machine.ensure()
+                if resources is None:
+                    machine.ensure()
                 machine.network()
             return result
         if args.command == 'status':
@@ -230,8 +241,19 @@ def main(argv=None):
             if args.confirm != instance.name:
                 raise DevError('--confirm must match the instance name. Reset deletes its machine, runs and service data.')
             machine.require_idle()
-            machine.delete()
-            result = compose(instance, 'down', '--volumes', '--remove-orphans')
+            from devops.resources import lifecycle
+            resources = lifecycle(instance, machine)
+            if resources is not None and resources.path.exists():
+                resources.destroy()
+                result = 0
+            elif resources is not None:
+                resources.check()
+                if machine.state():
+                    raise DevError('Machine exists without a resource receipt; inspect ownership before deletion.')
+                result = compose(instance, 'down', '--volumes', '--remove-orphans')
+            else:
+                machine.delete()
+                result = compose(instance, 'down', '--volumes', '--remove-orphans')
             if not result:
                 shutil.rmtree(instance.root)
             return result

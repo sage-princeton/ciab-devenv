@@ -196,15 +196,22 @@ p.write_text('\\n'.join(lines)+'\\n')
         inputs = {'drop_in': str(args.drop_in.resolve()) if args.drop_in else None, 'manifest': str(args.manifest.resolve()) if args.manifest else None,
                   'files': [{'path': str(file.relative_to(staging)), 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
                             for file in sorted(staging.rglob('*')) if file.is_file()]}
+        from devops.resources import lifecycle
+        resources = lifecycle(self.instance, self)
+        if resources is not None:
+            resources.check()
         renewed_certificates = self.instance.certificates()
         if renewed_certificates:
             compose(self.instance, 'stop', 'edge')
         if scaffold.name == 'acp':
             from .agentrq import prepare_image
             prepare_image(self.instance, runtime_pins)
-        result = compose(self.instance, 'up', '-d', '--wait', '--wait-timeout', '300')
-        if result:
-            return result
+        if resources is not None:
+            resources.apply()
+        else:
+            result = compose(self.instance, 'up', '-d', '--wait', '--wait-timeout', '300')
+            if result:
+                return result
         if scaffold.name == 'acp':
             from .agentrq import Client
             for attempt in range(30):
@@ -215,7 +222,8 @@ p.write_text('\\n'.join(lines)+'\\n')
                     if attempt == 29:
                         raise
                     time.sleep(1)
-        self.ensure()
+        if resources is None:
+            self.ensure()
         self.network()
         devenv_revision = source_info(ROOT)
         archive = self.instance.root / 'machine-source.tar.gz'
