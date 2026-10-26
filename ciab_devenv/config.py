@@ -186,7 +186,9 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
         return values
 
     def compose_files(self):
-        return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else [])]
+        ownership = self.root / 'compose.ownership.json'
+        return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else []),
+                *([ownership] if ownership.exists() else [])]
 
     def process_env(self) -> dict[str, str]:
         env = dict(os.environ)
