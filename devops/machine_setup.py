@@ -1,9 +1,11 @@
 """Install the selected production scaffold and local service connections."""
 import json
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from importlib import import_module
 from pathlib import Path
 
@@ -43,19 +45,38 @@ def main():
     replace_tree(staging / 'devenv', '/devenv')
     run(['chmod', '-R', 'a+rX,go-w', '/source', '/devenv'])
     from devops.source import source_path
-    source = source_path('/source', 'workspace')
-    Path('/usr/local/lib/crux').mkdir(parents=True, exist_ok=True)
-    for name in ('run_provision.py', 'run_service_auth.py'):
-        if (source / name).is_file():
-            shutil.copy2(source / name, Path('/usr/local/lib/crux') / name)
-    shutil.copy2(source / ('scaffolds/' + scaffold.name + '.sh'), source / 'scaffold.sh')
-    adapter.prepare(settings)
-    if settings['has_manifest']:
-        shutil.copy2(staging / 'input/provision.json', '/etc/crux-provision.json')
-        Path('/etc/crux-provision.json').chmod(0o644)
+    source_root = Path('/source')
+    if settings.get('bundle'):
+        archive = staging / 'production-bundle.tar.gz'
+        digest = settings['bundle']['sha256']
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+            raise ValueError('Production bundle checksum mismatch')
+        payload = Path('/opt/crux-deployments') / digest
+        payload.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive) as stream:
+            for member in stream.getmembers():
+                if not member.isfile() or Path(member.name).is_absolute() or '..' in Path(member.name).parts:
+                    raise ValueError('Invalid production bundle member')
+            stream.extractall(payload, filter='data')
+        deployment = staging / 'deployment.json'
+        deployment.write_text(json.dumps({'owner': settings['owner'], 'bundle_sha256': digest, 'region': 'us-east-1'}))
+        run(['python3', str(payload / 'source/devops/box/stage.py'), str(payload), str(deployment), '/tmp/machine-secrets.json'])
+        source_root = payload / 'source'
+        source = source_root / 'devops/ec2-workspaces'
     else:
-        Path('/etc/crux-provision.json').unlink(missing_ok=True)
-    environment = dict(os.environ, AGENT_PLATFORM=scaffold.platform, DEBIAN_FRONTEND='noninteractive')
+        source = source_path(source_root, 'workspace')
+        Path('/usr/local/lib/crux').mkdir(parents=True, exist_ok=True)
+        for name in ('run_provision.py', 'run_service_auth.py'):
+            if (source / name).is_file():
+                shutil.copy2(source / name, Path('/usr/local/lib/crux') / name)
+        shutil.copy2(source / ('scaffolds/' + scaffold.name + '.sh'), source / 'scaffold.sh')
+        adapter.prepare(settings)
+        if settings['has_manifest']:
+            shutil.copy2(staging / 'input/provision.json', '/etc/crux-provision.json')
+            Path('/etc/crux-provision.json').chmod(0o644)
+        else:
+            Path('/etc/crux-provision.json').unlink(missing_ok=True)
+    environment = dict(os.environ, AGENT_PLATFORM=scaffold.platform, DEBIAN_FRONTEND='noninteractive', CRUX_SOURCE_ROOT=str(source_root))
     environment.update(adapter.settings_environment(settings))
     from devops.production import scaffold_settings
     production_scaffold = scaffold_settings('/source', settings)
@@ -67,13 +88,15 @@ def main():
     adapter.installed(scaffold)
     run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
          'pytest==8.4.2', 'ruff==0.14.1'])
-    drop = Path('/srv/crux-run/run-harness')
-    preserve = ('workspace',) if (drop / 'workspace').exists() else ()
-    replace_tree(staging / 'input/drop-in', drop, preserve=preserve)
-    (drop / 'workspace').mkdir(exist_ok=True)
-    Path('/srv/crux-run/state').mkdir(exist_ok=True)
+    if not settings.get('bundle'):
+        drop = Path('/srv/crux-run/run-harness')
+        preserve = ('workspace',) if (drop / 'workspace').exists() else ()
+        replace_tree(staging / 'input/drop-in', drop, preserve=preserve)
+        (drop / 'workspace').mkdir(exist_ok=True)
+        Path('/srv/crux-run/state').mkdir(exist_ok=True)
+        run(['chown', '-R', 'ubuntu:ubuntu', '/srv/crux-run'])
     Path('/work').mkdir(exist_ok=True)
-    run(['chown', '-R', 'ubuntu:ubuntu', '/srv/crux-run', '/work'])
+    run(['chown', 'ubuntu:ubuntu', '/work'])
     aws = Path('/root/.aws')
     aws.mkdir(mode=0o700, exist_ok=True)
     (aws / 'config').write_text('[profile ciab-local]\nregion=us-east-1\n')
@@ -118,7 +141,9 @@ def main():
     versions = {'node': subprocess.check_output(['node', '--version'], text=True).strip()}
     if scaffold.name == 'acp':
         versions[scaffold.platform] = subprocess.check_output([scaffold.platform, '--version'], text=True).strip()
-        packages = Path('/usr/lib/node_modules')
+        packages = Path('/opt/crux-agents') / scaffold.platform / 'node_modules'
+        if not packages.is_dir():
+            packages = Path('/usr/lib/node_modules')
         names = ['@agentrq/acp-gateway', '@agentclientprotocol/' + ('codex-acp' if scaffold.platform == 'codex' else 'claude-agent-acp')]
         for name in names:
             versions[name] = json.loads((packages / name / 'package.json').read_text())['version']
