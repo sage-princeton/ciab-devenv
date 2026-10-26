@@ -1,8 +1,8 @@
 """Execution contracts shared by host orchestration and machine adapters."""
 from dataclasses import dataclass, replace
+from devops.source import required_path
 
 from .config import DevError, source_info
-from .layout import source_path
 
 
 @dataclass(frozen=True)
@@ -17,8 +17,7 @@ class Scaffold:
     required_files: tuple[str, ...]
 
     def validate_source(self, source):
-        missing = [str(source_path(source, name).relative_to(source))
-                   for name in self.required_files if not source_path(source, name).is_file()]
+        missing = [name for name in self.required_files if not required_path(source, name).is_file()]
         if missing:
             raise DevError(f'Selected source lacks {self.name.upper()} provisioning: ' + ', '.join(missing))
         source_info(source)

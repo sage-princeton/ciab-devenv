@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 from .config import DevError, private_write
+from devops.source import source_path
 
 PIN_KEYS = ('ACP_GATEWAY_VERSION', 'ACP_GATEWAY_TARBALL_URL', 'ACP_GATEWAY_SHA256',
             'CODEX_VERSION', 'CODEX_ACP_VERSION', 'TRACING_PLUGIN_VERSION', 'TRACING_HOOK_TRUSTED_HASH',
@@ -29,8 +30,8 @@ def assignments(path, keys):
 
 
 def pins(source):
-    result = assignments(source / 'src/ec2-workspaces/placeholders-base.txt.example', PIN_KEYS)
-    result.update(assignments(source / 'src/ec2-control/configure-control.sh',
+    result = assignments(source_path(source, 'workspace', 'placeholders-base.txt.example'), PIN_KEYS)
+    result.update(assignments(source_path(source, 'controller', 'configure-control.sh'),
                               ('AGENTRQ_IMAGE', 'AGENTRQ_IMAGE_URL', 'AGENTRQ_IMAGE_SHA256', 'AGENTRQ_SQLITE_DSN')))
     required = ('AGENTRQ_IMAGE',)
     if '@sha256:' not in result.get('AGENTRQ_IMAGE', ''):

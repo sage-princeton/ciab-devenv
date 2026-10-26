@@ -139,7 +139,7 @@ services:
       SSL_CERT_FILE: /certs/ca.crt
     volumes:
       - ./services:/devenv/services:ro
-      - ${CIAB_SOURCE}/lambda:/source/lambda:ro
+      - ${CIAB_SOURCE}:/source:ro
       - ${CIAB_INSTANCE}/certs/ca.crt:/certs/ca.crt:ro
 
 volumes:

@@ -30,11 +30,16 @@ tests here verify this environment's own orchestration and fixtures.
 4. Fix the responsible component. Environment behavior belongs here; production
    scaffold behavior belongs in crux-in-a-box. Reuse production implementations.
 5. Record evidence and remaining gaps before reporting completion.
-6. After testing each PR, run `./devctl --name NAME down` and stop any associated
-   isolated machine if shutdown failed (`orb stop ciab-NAME-run`), including after failures or
-   interruptions. `down` normally stops both the machine and containers. Verify no containers or machines for that instance remain
-   running. Preserve reports and volumes unless intentionally discarding them;
-   do not leave services running between PRs without the user's explicit request.
+6. After testing each PR, export relevant reports, sanitized logs and artifacts to
+   durable storage outside the disposable environment, and cite that evidence in
+   the PR description/comment or another durable record. Then delete the local
+   test environment with `./devctl --name NAME reset --confirm NAME`: remove its
+   OrbStack machine/disk, containers, volumes and private local state. Do not keep
+   stopped machines or their data after the evidence has been preserved and cited.
+   On failure or interruption, first stop with `down` (or `orb stop ciab-NAME-run`
+   if needed), preserve/cite the failure evidence, then reset. Verify that the
+   named machine and containers/volumes are absent. Delete only resources owned
+   by that test environment; preserve explicitly requested manual environments.
 
 ## Required evidence for every validation report
 
@@ -47,7 +52,7 @@ All future users and coding agents must record:
 - Failed, skipped, unavailable and untested checks, plus limitations of emulation.
 
 Use `devctl report` to retrieve machine-generated evidence and add any practical
-verification it cannot infer. Preserve failure reports; do not relabel unavailable
+verification it cannot infer. Export and cite failure reports before deleting local environment data; do not relabel unavailable
 features or skipped tests as passing. A completed devenv does not imply AE-258 or
 its unfinished upstream stories are complete.
 
@@ -76,6 +81,15 @@ actual Slack/email recipients needs explicit authorization; local fixtures do no
 ## Verification
 
 Run `python3 -m unittest discover -s tests -v`, `python3 -m compileall -q
-ciab_devenv services verification tests`, and exercise the changed environment commands. Run Ruff
+ciab_devenv devops monitoring services verification tests`, and exercise the changed environment commands. Run Ruff
 inside the provisioned machine. Exercise CLI behavior, startup and recovery after changes to
 orchestration. Do not commit design conversation notes under `docs/superpowers/`.
+
+## Component ownership
+
+Use the production repository's Box, Run, Scaffold, Invoker, Agent and Harness
+terminology. The Invoker CLI lives in `ciab_devenv/`, Box configuration adapters in
+`devops/`, execution/report collection in `monitoring/`, protocol fixtures in
+`services/`, and reusable verification helpers in `verification/`. Resolve
+production source through its versioned layout contract; retain support for
+older PR sources without that contract. Do not revive archived OpenClaw paths.
