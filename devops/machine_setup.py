@@ -87,7 +87,7 @@ def main():
     run(['bash', str(source / 'install-run.sh')], env=environment)
     adapter.installed(scaffold)
     run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
-         'pytest==8.4.2', 'ruff==0.14.1'])
+         '-r', str(Path(__file__).with_name('requirements-test.txt'))])
     if not settings.get('bundle'):
         drop = Path('/srv/crux-run/run-harness')
         preserve = ('workspace',) if (drop / 'workspace').exists() else ()
