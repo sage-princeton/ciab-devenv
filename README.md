@@ -8,7 +8,7 @@ provider with a dedicated test key.
 **Start here:** follow the runbook below to provision a box and launch CRUX.
 `run` starts the selected production systemd service; ACP mode submits and observes an AgentRQ task. There is no container
 execution path. `down` stops both the machine and its service containers while
-preserving evidence and data.
+preserving evidence and data until export and final cleanup.
 
 This repository owns infrastructure, reusable fixtures, execution and observation.
 Feature scenarios, acceptance criteria, rerun instructions and validation evidence
@@ -19,6 +19,8 @@ Reusable helpers live in `verification/`. See [AGENTS.md](AGENTS.md) for agent g
 | Directory | Purpose |
 | --- | --- |
 | [ciab_devenv/](ciab_devenv/README.md) | Host CLI, private configuration, staging and machine lifecycle |
+| `devops/` | Source-layout contract and production configuration adapters |
+| `monitoring/` | Bounded execution and report collection |
 | [services/](services/README.md) | Production provisioning adapter, execution reports and local protocol fixtures |
 | [verification/](verification/README.md) | Reusable SDK execution, state/trace inspection and upstream check helpers |
 | [tests/](tests/README.md) | Tests of the environment's orchestration and fixtures |
@@ -27,7 +29,7 @@ Reusable helpers live in `verification/`. See [AGENTS.md](AGENTS.md) for agent g
 
 Prerequisites: macOS, OrbStack running, Docker Compose v2, Python 3.11+, Git,
 OpenSSL and direnv. Use a CRUX worktree containing the selected production scaffold module
-(`src/ec2-workspaces/scaffolds/sdk.sh` or `acp.sh`).
+(located by `devops/layout.json`, with legacy `src/` layouts supported).
 
 1. **Prepare a single PR worktree and drop-in.** Follow its `OPERATOR_GUIDE.md`
    and the upstream SDK README. Resolve placeholders, set bounded budgets, and
@@ -89,19 +91,23 @@ OpenSSL and direnv. Use a CRUX worktree containing the selected production scaff
    `report latest` selects the latest command, including fixture controls; retain
    a specific report ID when collecting evidence.
 
-6. **Stop after testing.** Always shut down the instance after each PR, including
-   failed testing. Reports remain available from the host while OrbStack is off.
+6. **Export evidence, then delete after testing.** Stop the instance after each PR,
+   including failed testing. Export relevant reports/artifacts and cite them in the
+   PR or another durable record, then delete its machine, volumes and local state.
 
    ```sh
    ./devctl --name sdk down
    ./devctl --name sdk machine status
-   ./devctl --name sdk report REPORT_ID
+   ./devctl --name sdk report REPORT_ID --output /path/to/durable/evidence
+   # After citing the exported evidence:
+   ./devctl --name sdk reset --confirm sdk
    ```
 
    `down` verifies that the named machine and containers are stopped. It preserves
    the machine disk, volumes and reports. Use `up` to resume the environment;
    CRUX starts only when you call `run`. Repeat `run` to resume its persisted
-   scaffold state. Use a new instance name and port for an independent run.
+   scaffold state during testing. After evidence is exported and cited, `reset`
+   removes local data. Use a new instance name and port for an independent run.
 
 ## AgentRQ / ACP runs
 
@@ -315,3 +321,13 @@ outside git. SDK and ACP adapters share local services, machine lifecycle and re
 Both invoke the selected worktree's production provisioning.
 
 Prototype tracked by [AE-269](https://linear.app/agent-evals/issue/AE-269).
+
+## Repository and production layout
+
+`devops/` contains the isolated Box configuration adapters; `monitoring/` executes
+bounded jobs and collects reports. `services/` retains reusable protocol fixtures,
+`ciab_devenv/` is the Invoker CLI, and `verification/` contains reusable helpers.
+The production checkout owns Scaffold code and declares its component paths in
+`devops/layout.json`. Older PRs without that file retain their original paths.
+Archived OpenClaw code is never selected as an execution adapter. Box, Run,
+Scaffold, Invoker, Agent and Harness follow the production repository terminology.

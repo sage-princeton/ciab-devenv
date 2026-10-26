@@ -1,9 +1,10 @@
 """Stage SDK source and select its production configuration."""
-from services.machine_setup import replace_tree, run
+from devops.machine_setup import replace_tree, run
+from devops.source import source_path
 
 
 def prepare(settings):
-    replace_tree('/source/src/sdk-scaffold', '/opt/crux-sdk-scaffold', preserve=('.venv',))
+    replace_tree(source_path('/source', 'sdk'), '/opt/crux-sdk-scaffold', preserve=('.venv',))
     run(['chmod', '-R', 'a+rX,go-w', '/opt/crux-sdk-scaffold'])
 
 
