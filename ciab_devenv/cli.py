@@ -131,8 +131,8 @@ def main(argv=None):
     operation_lock = None
     try:
         if args.command == 'plan':
-            from devops.production import contracts
-            print(json.dumps(contracts(args.source, required=True).Run.load(args.spec).plan(), indent=2))
+            from devops.production import plan
+            print(json.dumps(plan(args.source, args.spec), indent=2))
             return 0
         instance = Environment(args.name)
         if args.command not in ('status', 'logs', 'fixture', 'report', 'machine', 'task'):
