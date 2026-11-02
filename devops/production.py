@@ -1,9 +1,26 @@
 """Load deployment contracts from the explicitly selected, trusted CRUX source."""
 import hashlib
 import importlib.util
+import json
 import sys
 from importlib import import_module
 from pathlib import Path
+
+
+def plan(source, specification):
+    """Validate a resolved Run/controller graph with its selected source contracts.
+
+    :param source: Trusted production worktree.
+    :param specification: Resolved resource graph JSON, not public Run inputs.
+    :returns: Resource/phase plan without cloud operations.
+    """
+    production = contracts(source, required=True)
+    value = json.loads(Path(specification).read_text())
+    kind = 'Controller' if value.get('kind') == 'controller' else 'Run'
+    model = getattr(production, kind, None)
+    if model is None:
+        raise ValueError(f'Selected source does not provide {kind} contracts')
+    return model.parse(value).plan()
 
 
 def bundle(source, settings, inputs, output):
