@@ -29,12 +29,14 @@ class ProductionContractTests(unittest.TestCase):
         self.assertEqual(contracts(two).VERSION, 2)
 
     def test_controller_plan_uses_selected_source_without_cloud_operations(self):
+        """Verify controller plan uses selected source without cloud operations."""
         source=self.package('controller', 'class Controller:\n    @staticmethod\n    def parse(value): return Controller()\n    def plan(self): return {"deployment":"controller"}\n')
         spec=self.root/'controller.json'
         spec.write_text('{"kind":"controller"}')
         self.assertEqual(plan(source,spec), {'deployment':'controller'})
 
     def test_older_source_cannot_silently_treat_controller_as_run(self):
+        """Verify older source cannot silently treat controller as run."""
         source=self.package('older', 'class Run: pass\n')
         spec=self.root/'controller.json'
         spec.write_text('{"kind":"controller"}')

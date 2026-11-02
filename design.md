@@ -72,3 +72,7 @@ its Box staging implementation inside OrbStack. It then installs/configures the
 same production Scaffold with explicit local fixture endpoints. Bundle hashes
 and installed source identity are recorded in evidence and on the Box; temporary
 payloads are not an operational database.
+
+Graph inspection dispatches Run and independent controller declarations to the
+selected production contract. It performs no cloud calls and does not create an
+AgentRQ controller. The normal local AgentRQ service remains a reusable fixture.

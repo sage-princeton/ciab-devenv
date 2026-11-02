@@ -35,6 +35,15 @@ Reserve three consecutive ports for each environment: the base `--port` for the
 Langfuse UI, plus two loopback-only fixture ports. Box setup installs `socat` and
 manages its local fixture relays; no Docker daemon network override is needed.
 
+Inspect a resolved production graph without resources or credentials:
+
+```sh
+./devctl plan --source /path/to/crux-worktree --spec /private/resolved-run.json
+```
+
+Public Run/controller configuration is resolved by CRUX's deployment CLI; this
+inspection command accepts the resulting resource graph.
+
 ## Development
 
 Run the [environment checks](tests/README.md#development), then exercise changed
