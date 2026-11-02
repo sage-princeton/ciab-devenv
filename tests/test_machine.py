@@ -116,6 +116,19 @@ class MachineTests(unittest.TestCase):
                 self.machine.stop()
                 remote.assert_not_called()
 
+    def test_shutdown_waits_for_orbstack_to_finish_stopping(self):
+        """Do not report shutdown complete while OrbStack still reports running."""
+        with patch.object(self.machine, 'state', side_effect=[{'state': 'running'}, {'state': 'running'}, {'state': 'stopped'}]) as state, patch.object(self.machine, 'call'), patch('subprocess.run') as host, patch('time.sleep'):
+            self.machine.stop()
+        self.assertEqual(state.call_count, 3)
+        host.assert_called_once_with(['orb', 'stop', self.machine.name], check=True)
+
+    def test_shutdown_reports_a_machine_that_never_stops(self):
+        """Bound shutdown waiting and retain an actionable failure for the operator."""
+        with patch.object(self.machine, 'state', return_value={'state': 'running'}), patch.object(self.machine, 'call'), patch('subprocess.run'), patch('time.sleep'):
+            with self.assertRaisesRegex(DevError, 'did not stop'):
+                self.machine.stop()
+
     def test_report_is_available_without_runtime_and_rejects_traversal(self):
         """Verify report is available without runtime and rejects traversal."""
         private_write(self.instance.root / 'reports/test-id/report.json', '{"exit_code": 0}\n')

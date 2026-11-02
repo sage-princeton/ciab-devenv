@@ -63,3 +63,6 @@ machines; `reset --confirm NAME` explicitly selects that machine for deletion.
 Neither driver reads a laptop resource receipt. Stopped Boxes can be discovered
 and deleted without starting their services. Do not manually reuse reserved
 machine names for unrelated work.
+
+Shutdown waits for OrbStack to report the named Box stopped before returning; a
+bounded timeout surfaces stalled shutdown while preserving evidence for cleanup.

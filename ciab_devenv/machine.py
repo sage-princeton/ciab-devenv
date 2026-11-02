@@ -211,13 +211,22 @@ p.write_text('\\n'.join(lines)+'\\n')
                 raise DevError('Run service did not stop; stopped the isolated machine instead.')
 
     def stop(self):
-        """Stop owned running services and machine without waking a stopped machine."""
+        """Stop owned services and wait up to 30 seconds for the machine to stop.
+
+        :raises DevError: OrbStack still reports the machine running after waiting.
+        """
         state = self.state()
         if state and state['state'] == 'running':
             try:
                 self.call('systemctl', 'stop', *self.run_units(), 'ciab-job-*.service', 'ciab-command-*.service', check=False)
             finally:
                 subprocess.run(['orb', 'stop', self.name], check=True)
+                for _ in range(60):
+                    state = self.state()
+                    if not state or state['state'] == 'stopped':
+                        return
+                    time.sleep(0.5)
+                raise DevError('The machine did not stop; inspect OrbStack before leaving this instance.')
 
     def delete(self):
         """Delete the named OrbStack machine when it exists."""
