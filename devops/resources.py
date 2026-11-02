@@ -55,10 +55,10 @@ class Services:
     def ensure(self, resource, previous, dependencies, context):
         """Reconcile the labeled Compose project and return its live project identity.
 
-        :param resource: Resource for this operation.
-        :param previous: Previous for this operation.
-        :param dependencies: Dependencies for this operation.
-        :param context: Context for this operation.
+        :param resource: Local services declaration.
+        :param previous: Fresh provider outputs, empty when the project is absent.
+        :param dependencies: Observed prerequisite outputs.
+        :param context: Stable production lifecycle ownership context.
         """
         from ciab_devenv.cli import compose
         self.preflight(resource, context)
@@ -92,7 +92,7 @@ class Box:
     def __init__(self, machine):
         """Bind the selected environment and its deterministic resource names.
 
-        :param machine: Machine for this operation.
+        :param machine: Isolated Box adapter for the selected environment.
         """
         self.machine = machine
 
