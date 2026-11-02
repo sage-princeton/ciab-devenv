@@ -7,6 +7,7 @@ from .config import DevError, source_info
 
 @dataclass(frozen=True)
 class Scaffold:
+    """Describe installed Scaffold paths, service identity and supported local commands."""
     name: str
     platform: str
     service: str
@@ -17,12 +18,26 @@ class Scaffold:
     required_files: tuple[str, ...]
 
     def validate_source(self, source):
-        missing = [name for name in self.required_files if not required_path(source, name).is_file()]
+        """Reject a source missing the selected Scaffold provisioning files.
+
+        :param source: Selected production worktree.
+        """
+        files = self.required_files
+        manifest = source / 'scaffolds' / self.platform / 'package.json'
+        if self.name == 'acp' and manifest.is_file():
+            files = tuple(name for name in files if not name.endswith('placeholders-base.txt.example'))
+        missing = [name for name in files if not required_path(source, name).is_file()]
         if missing:
             raise DevError(f'Selected source lacks {self.name.upper()} provisioning: ' + ', '.join(missing))
         source_info(source)
 
     def command(self, suite, argv=()):
+        """Build the argument vector for an operation supported by this Scaffold.
+
+        :param suite: Local check, probe, fixture or exec operation.
+        :param argv: Extra arguments for fixtures or direct execution.
+        :returns: Argument list for execution on the isolated Box.
+        :raises DevError: The selected Scaffold does not support the operation."""
         if suite in ('services', 'fixture'):
             return [self.python, '/devenv/services/check_services.py', suite, *argv]
         if suite == 'exec':
@@ -57,6 +72,12 @@ ACP = Scaffold('acp', 'codex', 'crux-acp-gateway', '/opt/ciab-tools/.venv/bin/py
 
 def get_scaffold(name='sdk', platform=None):
 
+    """Select the immutable execution contract for a Scaffold/platform pair.
+
+    :param name: SDK or ACP Scaffold name.
+    :param platform: Optional agent platform within that Scaffold.
+    :returns: Matching Scaffold contract with required source paths.
+    :raises DevError: The selection is unsupported."""
     if name == 'sdk' and platform in (None, 'openai-agents'):
         return SDK
     if name == 'acp' and platform in (None, 'codex', 'claude'):
