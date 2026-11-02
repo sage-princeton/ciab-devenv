@@ -34,6 +34,10 @@ def replace_tree(source, destination, preserve=()):
 
 
 def main():
+    """Read staged settings and install/configure a stopped production Scaffold.
+
+    :returns: None; writes Box configuration or raises on a failed install/probe.
+    """
     os.umask(0o022)
     settings = json.loads(Path('/tmp/machine-settings.json').read_text())
     staging = Path('/opt/ciab-staging')
