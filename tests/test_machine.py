@@ -76,6 +76,17 @@ class MachineTests(unittest.TestCase):
             with self.assertRaisesRegex(DevError, 'changed since provisioning'):
                 self.machine.require_provisioned()
 
+    def test_network_relays_use_published_ports_without_local_state(self):
+        """Route fixture domains through Box loopback without Docker bridge IPs."""
+        with patch.object(self.machine, 'call') as remote, patch('subprocess.check_output') as host:
+            self.machine.network()
+        host.assert_not_called()
+        commands = str(remote.call_args_list)
+        self.assertIn('host.orb.internal:23401', commands)
+        self.assertIn('host.orb.internal:23402', commands)
+        self.assertIn('127.0.0.1 langfuse.test', commands)
+        self.assertFalse((self.instance.root / 'machine-hosts.json').exists())
+
     def test_shutdown_does_not_wake_stopped_machine(self):
         for state in (None, {'state': 'stopped'}):
             with patch.object(self.machine, 'state', return_value=state), patch.object(self.machine, 'call') as remote:

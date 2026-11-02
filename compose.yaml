@@ -67,6 +67,7 @@ services:
     environment:
       MINIO_ROOT_USER: ciab
       MINIO_ROOT_PASSWORD: ${CIAB_PASSWORD}
+    ports: ["127.0.0.1:${CIAB_STORAGE_PORT}:9000"]
     volumes: [storage:/data]
     healthcheck:
       test: [CMD, mc, ready, local]
@@ -105,6 +106,7 @@ services:
     depends_on:
       langfuse: {condition: service_healthy}
   edge:
+    ports: ["127.0.0.1:${CIAB_EDGE_PORT}:443"]
     image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     volumes:
       - ./services/Caddyfile:/etc/caddy/Caddyfile:ro

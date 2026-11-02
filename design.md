@@ -45,3 +45,9 @@ Source and inputs are root-owned on the Box. No host Docker socket, home directo
 SSH agent or cloud credentials are exposed to research code. Named environment
 settings and evidence remain private; reports record source/model/service identity
 and outcomes. Feature-specific assertions remain in the implementing CRUX PR.
+The Box reaches fixtures through loopback ports published by Compose. The base
+operator port derives the HTTPS port (`+1`) and storage port (`+2`); only that base
+port is caller-configurable. Two systemd-managed TCP relays on the Box preserve
+stable fixture hostnames and TLS end to end, including SDKs with fixed API ports.
+This avoids depending on direct routing between an isolated machine and Docker
+bridge addresses. Other containers keep their private Compose connections.
