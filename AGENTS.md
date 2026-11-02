@@ -91,5 +91,16 @@ Use the production repository's Box, Run, Scaffold, Invoker, Agent and Harness
 terminology. The Invoker CLI lives in `ciab_devenv/`, Box configuration adapters in
 `devops/`, execution/report collection in `monitoring/`, protocol fixtures in
 `services/`, and reusable verification helpers in `verification/`. Resolve
-production source through its versioned layout contract; retain support for
-older PR sources without that contract. Do not revive archived OpenClaw paths.
+production source through its directory structure; retain support for older PR
+sources using their original paths. Do not revive archived OpenClaw paths.
+
+
+## Simplicity and documentation
+
+Define configuration once at its highest abstraction. Follow production's named
+resource reconciliation; do not add a second source of deployment truth here.
+README.md gives directory purpose, prerequisites and a brief command runbook.
+design.md explains implemented component relationships, preferably with Mermaid.
+Keep both current with each PR; parent documentation owns overlapping guidance.
+Every class and function needs a succinct purpose/behavior/input/output docblock;
+Python docblocks use reStructuredText.
