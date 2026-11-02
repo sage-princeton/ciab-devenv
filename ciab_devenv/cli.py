@@ -259,14 +259,9 @@ def main(argv=None):
             machine.require_idle()
             from devops.resources import lifecycle
             resources = lifecycle(instance, machine)
-            if resources is not None and resources.path.exists():
+            if resources is not None:
                 resources.destroy()
                 result = 0
-            elif resources is not None:
-                resources.check()
-                if machine.state():
-                    raise DevError('Machine exists without a resource receipt; inspect ownership before deletion.')
-                result = compose(instance, 'down', '--volumes', '--remove-orphans')
             else:
                 machine.delete()
                 result = compose(instance, 'down', '--volumes', '--remove-orphans')

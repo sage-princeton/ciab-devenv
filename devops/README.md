@@ -14,3 +14,7 @@ python3 -m unittest discover -s tests
 
 When available, the selected source's Python contracts validate Scaffold settings.
 `devctl plan` validates its resolved resource specification without provisioning.
+
+Local resource drivers use the selected production lifecycle when available.
+`bootstrap` reconciles services then the named Box; `reset --confirm NAME` deletes
+only that environment's isolated machine and labeled Compose resources.
