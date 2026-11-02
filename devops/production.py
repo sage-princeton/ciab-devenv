@@ -6,6 +6,11 @@ from pathlib import Path
 
 
 def contracts(source, *, required=False):
+    """Load contracts from the trusted selected source, isolated from other revisions.
+
+    :param source: Selected production worktree.
+    :param required: Whether a source without contracts must fail.
+    """
     source = Path(source).resolve()
     package = source / 'devops/crux_devops/__init__.py'
     if not package.is_file():
@@ -30,6 +35,11 @@ def contracts(source, *, required=False):
 
 
 def scaffold_settings(source, settings):
+    """Validate settings using the selected production Scaffold contract when available.
+
+    :param source: Selected production worktree.
+    :param settings: Non-secret Scaffold settings.
+    """
     production = contracts(source)
     if production is None:
         return None
