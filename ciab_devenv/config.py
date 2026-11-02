@@ -48,6 +48,11 @@ def stage_directory(source: Path, destination: Path) -> None:
 
 
 class Environment:
+    """Load a named test environment's private settings and derive its resource names.
+
+    :param name: Local instance name; independent environments must use distinct names.
+    """
+
     def __init__(self, name: str):
         if not NAME.fullmatch(name):
             raise DevError("Instance name must start with a lowercase letter and contain at most 36 letters, digits or hyphens.")
@@ -190,7 +195,10 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
         return values
 
     def compose_files(self):
-        return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else [])]
+        """Return base, Scaffold and generated ownership Compose declarations in order."""
+        ownership = self.root / 'compose.ownership.json'
+        return [ROOT / 'compose.yaml', *([ROOT / 'compose.acp.yaml'] if self.scaffold.name == 'acp' else []),
+                *([ownership] if ownership.exists() else [])]
 
     def process_env(self) -> dict[str, str]:
         env = dict(os.environ)

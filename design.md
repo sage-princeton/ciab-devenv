@@ -55,3 +55,14 @@ worktree. A stopped Box reports installation status as unknown; status never wak
 it. Laptop reports are evidence only and are not required to operate the Box.
 Production contracts are imported from the selected worktree under a unique
 module name so testing two revisions cannot accidentally reuse another's code.
+
+The production `Lifecycle` reconciles local services before the Box and deletes
+in reverse order. Compose resources use stable `io.crux.owner` labels. OrbStack
+has no resource tags, so `ciab-NAME-run` is a reserved namespace for isolated test
+machines; `reset --confirm NAME` explicitly selects that machine for deletion.
+Neither driver reads a laptop resource receipt. Stopped Boxes can be discovered
+and deleted without starting their services. Do not manually reuse reserved
+machine names for unrelated work.
+
+Shutdown waits for OrbStack to report the named Box stopped before returning; a
+bounded timeout surfaces stalled shutdown while preserving evidence for cleanup.

@@ -211,13 +211,23 @@ p.write_text('\\n'.join(lines)+'\\n')
                 raise DevError('Run service did not stop; stopped the isolated machine instead.')
 
     def stop(self):
-        """Stop owned running services and machine without waking a stopped machine."""
+        """Stop owned services and wait up to 30 seconds for the machine to stop.
+
+        :raises DevError: OrbStack still reports the machine running after waiting.
+        """
         state = self.state()
         if state and state['state'] == 'running':
             try:
                 self.call('systemctl', 'stop', *self.run_units(), 'ciab-job-*.service', 'ciab-command-*.service', check=False)
             finally:
                 subprocess.run(['orb', 'stop', self.name], check=True)
+                for _ in range(60):
+                    state = self.state()
+                    if not state or state['state'] == 'stopped':
+                        break
+                    time.sleep(0.5)
+                else:
+                    raise DevError('The machine did not stop; inspect OrbStack before leaving this instance.')
 
     def delete(self):
         """Delete the named OrbStack machine when it exists."""
@@ -263,15 +273,22 @@ p.write_text('\\n'.join(lines)+'\\n')
         inputs = {'drop_in': str(args.drop_in.resolve()) if args.drop_in else None, 'manifest': str(args.manifest.resolve()) if args.manifest else None,
                   'files': [{'path': str(file.relative_to(staging)), 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
                             for file in sorted(staging.rglob('*')) if file.is_file()]}
+        from devops.resources import lifecycle
+        resources = lifecycle(self.instance, self)
+        if resources is not None:
+            resources.check()
         renewed_certificates = self.instance.certificates()
         if renewed_certificates:
             compose(self.instance, 'stop', 'edge')
         if scaffold.name == 'acp':
             from .agentrq import prepare_image
             prepare_image(self.instance, runtime_pins)
-        result = compose(self.instance, 'up', '-d', '--wait', '--wait-timeout', '300')
-        if result:
-            return result
+        if resources is not None:
+            resources.apply()
+        else:
+            result = compose(self.instance, 'up', '-d', '--wait', '--wait-timeout', '300')
+            if result:
+                return result
         if scaffold.name == 'acp':
             from .agentrq import Client
             for attempt in range(30):
@@ -282,7 +299,8 @@ p.write_text('\\n'.join(lines)+'\\n')
                     if attempt == 29:
                         raise
                     time.sleep(1)
-        self.ensure()
+        if resources is None:
+            self.ensure()
         self.call('rm', '-f', '/etc/ciab-deployment.json')
         self.network()
         devenv_revision = source_info(ROOT)

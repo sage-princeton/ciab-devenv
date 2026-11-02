@@ -110,6 +110,10 @@ def down(instance, machine):
     :param instance: Named local environment.
     :param machine: Machine for this operation.
     """
+    from devops.resources import lifecycle
+    resources = lifecycle(instance, machine)
+    if resources is not None:
+        resources.check()
     try:
         machine.stop()
     finally:
@@ -193,9 +197,16 @@ def main(argv=None):
                 raise DevError('This instance uses legacy TLS certificates. Reprovision before up.')
             if not machine.state():
                 raise DevError('Use bootstrap or provision --drop-in PATH to install the machine first.')
-            result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
+            from devops.resources import lifecycle
+            resources = lifecycle(instance, machine)
+            if resources is not None:
+                resources.apply()
+                result = 0
+            else:
+                result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
             if not result:
-                machine.ensure()
+                if resources is None:
+                    machine.ensure()
                 machine.require_provisioned()
                 machine.network()
             return result
@@ -246,8 +257,14 @@ def main(argv=None):
             if args.confirm != instance.name:
                 raise DevError('--confirm must match the instance name. Reset deletes its machine, runs and service data.')
             machine.require_idle()
-            machine.delete()
-            result = compose(instance, 'down', '--volumes', '--remove-orphans')
+            from devops.resources import lifecycle
+            resources = lifecycle(instance, machine)
+            if resources is not None:
+                resources.destroy()
+                result = 0
+            else:
+                machine.delete()
+                result = compose(instance, 'down', '--volumes', '--remove-orphans')
             if not result:
                 shutil.rmtree(instance.root)
             return result
