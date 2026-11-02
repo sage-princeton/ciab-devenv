@@ -151,9 +151,13 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
         return True
 
     def compose_env(self) -> dict[str, str]:
+        """Derive private service settings and published ports for this environment.
+
+        :returns: Compose environment mapping, including credentials; never log it.
+        """
         d = self.data
         result = {"CIAB_SOURCE": str(self.root / "source"), "CIAB_ROOT": str(ROOT), "CIAB_INSTANCE": str(self.root), "CIAB_PROJECT": self.project,
-                  "CIAB_PORT": str(d["port"]), "CIAB_PASSWORD": d["password"],
+                  "CIAB_PORT": str(d["port"]), "CIAB_EDGE_PORT": str(d["port"] + 1), "CIAB_STORAGE_PORT": str(d["port"] + 2), "CIAB_PASSWORD": d["password"],
                   "CIAB_SALT": d["salt"], "CIAB_ENCRYPTION_KEY": d["encryption_key"],
                   "CIAB_FIXTURE_TOKEN": d["fixture_token"], "COST_TRACKER_TOKEN": d["cost_token"],
                   "LANGFUSE_PUBLIC_KEY": d["langfuse_public_key"], "LANGFUSE_SECRET_KEY": d["langfuse_secret_key"],
@@ -173,7 +177,7 @@ subjectAltName=DNS:langfuse.test,DNS:cost.test,DNS:fixtures.test,DNS:api.runpod.
             result.update(CIAB_AGENTRQ_IMAGE=d.get('agentrq_image', 'agentrq-not-provisioned'),
                           CIAB_AGENTRQ_ARCH=d.get('agentrq_architecture', 'amd64'),
                           CIAB_AGENTRQ_SQLITE_DSN=d.get('agentrq_sqlite_dsn', '/_storage/agentrq.db'),
-                          CIAB_AGENTRQ_PORT=str(d['port'] + 1), CIAB_AGENTRQ_ROOT_TOKEN=d['agentrq_root_token'],
+                          CIAB_AGENTRQ_PORT=result['CIAB_EDGE_PORT'], CIAB_AGENTRQ_ROOT_TOKEN=d['agentrq_root_token'],
                           CIAB_AGENTRQ_JWT_SECRET=d['agentrq_jwt_secret'], CIAB_AGENTRQ_TOKEN_KEY=d['agentrq_token_key'],
                           CIAB_AGENTRQ_WORKSPACE_TOKEN=d.get('agentrq_workspace_token', ''))
         return result

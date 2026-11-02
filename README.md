@@ -31,6 +31,10 @@ For ACP, add `--scaffold acp --platform codex` at bootstrap and pass a private
 service overrides and fixture APIs, [design.md](design.md) for component boundaries,
 [tests](tests/README.md) for environment checks, and `./devctl --usage` for CLI options.
 
+Reserve three consecutive ports for each environment: the base `--port` for the
+Langfuse UI, plus two loopback-only fixture ports. Box setup installs `socat` and
+manages its local fixture relays; no Docker daemon network override is needed.
+
 ## Development
 
 Run the [environment checks](tests/README.md#development), then exercise changed
