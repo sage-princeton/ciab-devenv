@@ -3,6 +3,8 @@
 Protocol fixtures and diagnostics used by the isolated Box. Fixture configuration
 and limitations are in [operations.md](../operations.md#local-services-and-fixtures).
 
+## Development
+
 After changing a fixture, restart its named service and run:
 
 ```sh

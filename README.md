@@ -30,3 +30,9 @@ For ACP, add `--scaffold acp --platform codex` at bootstrap and pass a private
 `--prompt-file` to `run`. See [operations.md](operations.md) for task controls,
 service overrides and fixture APIs, [design.md](design.md) for component boundaries,
 [tests](tests/README.md) for environment checks, and `./devctl --usage` for CLI options.
+
+## Development
+
+Run the [environment checks](tests/README.md#development), then exercise changed
+commands through a fresh named environment above. Feature-specific scenarios and
+acceptance evidence stay in the implementing CRUX PR.

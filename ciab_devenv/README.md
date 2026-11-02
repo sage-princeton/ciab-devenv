@@ -8,3 +8,8 @@ Inspect all commands from the repository root:
 ```sh
 ./devctl --usage
 ```
+
+## Development
+
+Run the [environment checks](../tests/README.md#development), then exercise changed
+commands with a fresh named instance, including shutdown and cleanup.

@@ -10,3 +10,8 @@ Git. With a selected/provisioned environment:
 ```
 
 Inspect actual outcomes and cite evidence before cleanup using the parent runbook.
+
+## Development
+
+Run the [environment checks](../tests/README.md#development) and invoke changed
+helpers in a provisioned Box. Keep helpers independent of any CRUX feature.
