@@ -9,10 +9,21 @@ from pathlib import Path
 
 
 def run(argv, **kwargs):
+    """Execute a command and raise if it fails.
+
+    :param argv: Argument vector passed without a shell.
+    :param kwargs: Additional subprocess.run options.
+    :returns: None."""
     subprocess.run(argv, check=True, **kwargs)
 
 
 def replace_tree(source, destination, preserve=()):
+    """Replace destination contents while preserving specified top-level children.
+
+    :param source: Staged directory to copy.
+    :param destination: Directory to replace.
+    :param preserve: Top-level child names to keep.
+    :returns: None; updates the destination filesystem."""
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     for child in destination.iterdir():

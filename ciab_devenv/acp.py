@@ -11,6 +11,11 @@ from .machine import new_id, scrub
 
 
 def task_control(machine, args):
+    """Apply an explicit task action and export sanitized execution evidence.
+
+    :param machine: Named isolated Box with a configured ACP Scaffold.
+    :param args: Parsed task action and identifier.
+    :returns: Zero on success, otherwise a nonzero operation status."""
     if machine.instance.scaffold.name != 'acp':
         raise DevError('Task controls require an ACP instance.')
     installed = machine.require_provisioned()
@@ -57,6 +62,11 @@ def task_control(machine, args):
 
 
 def run_task(machine, args):
+    """Start or observe a bounded ACP task and record its actual outcome.
+
+    :param machine: Named isolated Box with installed source metadata.
+    :param args: Parsed Run command, task selection and timeout.
+    :returns: Task exit status after exporting evidence and stopping owned work."""
     installed = machine.require_provisioned()
     machine.require_idle()
     client = Client(machine.instance)
