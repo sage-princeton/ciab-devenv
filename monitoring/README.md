@@ -7,3 +7,8 @@ a provisioned environment from the [parent runbook](../README.md).
 ./devctl --name review report
 ./devctl --name review report REPORT_ID --output /private/evidence
 ```
+
+## Development
+
+Run the [environment checks](../tests/README.md#development), then inspect a fresh
+Run report for correct source identity, bounded execution and sanitized output.

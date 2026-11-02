@@ -1,7 +1,11 @@
 # Environment tests
 
 Regression tests for environment orchestration and fixtures. Requires Python 3.12
-and permission to bind localhost for HTTP fixtures. From the repository root:
+and permission to bind localhost for HTTP fixtures.
+
+## Development
+
+From the repository root:
 
 ```sh
 python3 -m unittest discover -s tests -v
