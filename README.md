@@ -44,6 +44,11 @@ Inspect a resolved production graph without resources or credentials:
 Public Run/controller configuration is resolved by CRUX's deployment CLI; this
 inspection command accepts the resulting resource graph.
 
+`./devctl --name review exec -- python3 /devenv/verification/package_inventory.py`
+prints installed OS packages from the
+Box. Weekly Dependabot PRs update declared dependencies; the daily service-image
+audit preserves SPDX and vulnerability reports in GitHub Actions.
+
 ## Development
 
 Run the [environment checks](tests/README.md#development), then exercise changed
