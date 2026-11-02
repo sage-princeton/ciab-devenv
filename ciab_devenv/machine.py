@@ -330,7 +330,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         settings.update(has_manifest=bool(args.manifest), environment=local, bundle=payload,
                         redactions=secret_values({k: v for k, v in values.items() if k != 'AGENTRQ_WORKSPACE_ID'}))
         if payload:
-            settings['owner'] = json.loads((self.instance.root / 'resources.json').read_text())['owner']
+            settings['owner'] = resources.context.owner
         private_write(settings_file, json.dumps(settings))
         private_write(self.instance.root / 'redactions.json', json.dumps(settings['redactions']))
         run_id = new_id()

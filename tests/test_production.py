@@ -42,9 +42,11 @@ class ProductionContractTests(unittest.TestCase):
                 contracts(root)
 
     def test_legacy_source_has_no_bundle(self):
+        """Verify legacy source has no bundle."""
         self.assertIsNone(bundle(self.root, {}, self.root, self.root / 'payload'))
 
     def test_bundle_uses_selected_source_and_caller_inputs(self):
+        """Verify bundle uses selected source and caller inputs."""
         source = self.package('bundle', 'class Run:\n    @staticmethod\n    def parse(value): return value\n')
         (source / 'devops/crux_devops/bundle.py').write_text(
             'def assemble(source, run, output, *, drop_in):\n'

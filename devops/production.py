@@ -7,6 +7,14 @@ from pathlib import Path
 
 
 def bundle(source, settings, inputs, output):
+    """Assemble the selected production bundle with local service connections.
+
+    :param source: Selected production worktree.
+    :param settings: Scaffold and Run settings supplied by environment setup.
+    :param inputs: Caller-owned Run input directory.
+    :param output: Temporary bundle destination outside source and inputs.
+    :returns: Bundle metadata, or None for sources before production bundling.
+    """
     source = Path(source)
     if not (source / 'devops/crux_devops/bundle.py').is_file():
         return None

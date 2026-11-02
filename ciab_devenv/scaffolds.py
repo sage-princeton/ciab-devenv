@@ -7,6 +7,7 @@ from .config import DevError, source_info
 
 @dataclass(frozen=True)
 class Scaffold:
+    """Exercise Scaffold behavior in isolated fixtures."""
     name: str
     platform: str
     service: str
@@ -17,6 +18,10 @@ class Scaffold:
     required_files: tuple[str, ...]
 
     def validate_source(self, source):
+        """Reject a source missing the selected Scaffold provisioning files.
+
+        :param source: Selected production worktree.
+        """
         files = self.required_files
         manifest = source / 'scaffolds' / self.platform / 'package.json'
         if self.name == 'acp' and manifest.is_file():

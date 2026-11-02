@@ -14,7 +14,9 @@ from devops.acp_setup import settings_environment
 
 
 class ACPTests(unittest.TestCase):
+    """Exercise ACP behavior in isolated fixtures."""
     def test_manifest_source_does_not_require_legacy_placeholders(self):
+        """Verify manifest source does not require legacy placeholders."""
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)
             scaffold = get_scaffold('acp', 'codex')
@@ -31,6 +33,7 @@ class ACPTests(unittest.TestCase):
                 scaffold.validate_source(source)
 
     def test_registry_image_requires_digest_and_records_installed_image(self):
+        """Verify registry image requires digest and records installed image."""
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'CIAB_STATE_ROOT': tmp}):
             instance = Environment('registry')
             image = 'agentrq/agentrq:1.0.0@sha256:' + 'a' * 64
@@ -50,6 +53,7 @@ class ACPTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
 
     def test_archive_pins_remain_required_for_older_sources(self):
+        """Verify archive pins remain required for older sources."""
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)
             control = source / 'src/ec2-control/configure-control.sh'
@@ -69,6 +73,7 @@ class ACPTests(unittest.TestCase):
             self.assertEqual(pins(source)['AGENTRQ_IMAGE_SHA256'], 'b' * 64)
 
     def test_platform_contracts_and_production_settings(self):
+        """Verify platform contracts and production settings."""
         for platform in ('codex', 'claude'):
             adapter = get_scaffold('acp', platform)
             self.assertEqual(adapter.platform, platform)
@@ -84,6 +89,7 @@ class ACPTests(unittest.TestCase):
         self.assertEqual(get_scaffold(), SDK)
 
     def test_task_status_controls_completion_and_stops_service(self):
+        """Verify task status controls completion and stops service."""
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'CIAB_STATE_ROOT': tmp}):
             instance = Environment('unit')
             instance.data = {'scaffold': 'acp', 'platform': 'codex'}
@@ -109,6 +115,7 @@ class ACPTests(unittest.TestCase):
             machine.job.assert_called_once()
 
     def test_existing_unfinished_task_blocks_new_run(self):
+        """Verify existing unfinished task blocks new run."""
         machine = MagicMock()
         client = MagicMock()
         client.tasks.return_value = [{'id': 'existing', 'status': 'ongoing'}]
@@ -119,7 +126,9 @@ class ACPTests(unittest.TestCase):
 
 
 class TaskLifecycleTests(unittest.TestCase):
+    """Exercise TaskLifecycle behavior in isolated fixtures."""
     def setUp(self):
+        """Create isolated fixtures for one regression test."""
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         env = patch.dict(os.environ, {'CIAB_STATE_ROOT': self.temp.name})
@@ -158,9 +167,11 @@ class TaskLifecycleTests(unittest.TestCase):
         return {'task': {'id': task_id, 'status': self.state, 'response': 'Done! private-provider-credential'}}
 
     def report(self):
+        """Print or export the requested evidence report."""
         return json.loads(next(self.instance.root.glob('reports/*/report.json')).read_text())
 
     def test_completion_claim_does_not_bypass_timeout_and_cleanup(self):
+        """Verify completion claim does not bypass timeout and cleanup."""
         import itertools
         with patch('ciab_devenv.acp.time.monotonic', side_effect=itertools.count()):
             self.assertEqual(run_task(self.machine, argparse.Namespace(command='probe', timeout=1)), 124)
@@ -171,18 +182,21 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertNotIn('private-provider-credential', json.dumps(report))
 
     def test_interrupt_rejects_task_and_preserves_failure_evidence(self):
+        """Verify interrupt rejects task and preserves failure evidence."""
         self.interrupt = True
         self.assertEqual(run_task(self.machine, argparse.Namespace(command='probe', timeout=30)), 130)
         self.machine.stop_run.assert_called_once()
         self.assertEqual(self.report()['task']['status'], 'rejected')
 
     def test_blocked_task_is_not_success_or_cancelled(self):
+        """Verify blocked task is not success or cancelled."""
         self.state = 'blocked'
         self.assertEqual(run_task(self.machine, argparse.Namespace(command='probe', timeout=30)), 3)
         self.assertEqual(self.report()['task']['status'], 'blocked')
         self.machine.stop_run.assert_called_once()
 
     def test_requeue_happens_before_gateway_start(self):
+        """Verify requeue happens before gateway start."""
         self.state = 'blocked'
         calls = []
         def change(task_id, suffix='', body=None, method=None):
@@ -195,6 +209,7 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertLess(calls.index('requeue'), calls.index('start'))
 
     def test_cancel_falls_back_when_controller_cannot_notify_agent(self):
+        """Verify cancel falls back when controller cannot notify agent."""
         from ciab_devenv.acp import task_control
         original = self.task
         def unavailable(task_id, suffix='', body=None, method=None):
@@ -207,19 +222,23 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertEqual(self.report()['task']['status'], 'rejected')
 
     def test_cancel_does_not_stop_another_task(self):
+        """Verify cancel does not stop another task."""
         from ciab_devenv.acp import task_control
         self.client.tasks.return_value = [{'id': 'different', 'status': 'ongoing'}]
         self.assertEqual(task_control(self.machine, argparse.Namespace(action='cancel', task_id='task1')), 2)
         self.machine.stop_run.assert_not_called()
 
     def test_cancel_records_state_before_stopping_service(self):
+        """Verify cancel records state before stopping service."""
         from ciab_devenv.acp import task_control
         self.machine.stop_run.side_effect = lambda: self.assertEqual(self.state, 'rejected')
         self.assertEqual(task_control(self.machine, argparse.Namespace(action='cancel', task_id='task1')), 0)
         self.machine.stop_run.assert_called_once()
 
     def test_concurrent_cancel_between_task_poll_and_service_check(self):
+        """Verify concurrent cancel between task poll and service check."""
         def stop(*args, **kwargs):
+            """Stop owned running services and machine without waking a stopped machine."""
             if args[:2] == ('systemctl', 'is-active'):
                 self.state = 'rejected'
                 return MagicMock(stdout='inactive')
@@ -229,7 +248,9 @@ class TaskLifecycleTests(unittest.TestCase):
 
 
 class ClientContractTests(unittest.TestCase):
+    """Exercise ClientContract behavior in isolated fixtures."""
     def test_pagination_and_workspace_scope(self):
+        """Verify pagination and workspace scope."""
         from ciab_devenv.agentrq import Client
         client = Client.__new__(Client)
         client.instance = MagicMock(data={'agentrq_workspace_id': 'ownworkspace'})

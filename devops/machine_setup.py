@@ -40,6 +40,7 @@ def main():
 
     :returns: None; writes Box configuration or raises on a failed install/probe.
     """
+
     os.umask(0o022)
     settings = json.loads(Path('/tmp/machine-settings.json').read_text())
     staging = Path('/opt/ciab-staging')
@@ -81,7 +82,7 @@ def main():
     else:
         source = source_path(source_root, 'workspace')
         Path('/usr/local/lib/crux').mkdir(parents=True, exist_ok=True)
-        for name in ('run_provision.py', 'run_service_auth.py'):
+        for name in ('run_provision.py', 'run_service_auth.py', 'sdk_config.py'):
             if (source / name).is_file():
                 shutil.copy2(source / name, Path('/usr/local/lib/crux') / name)
         shutil.copy2(source / ('scaffolds/' + scaffold.name + '.sh'), source / 'scaffold.sh')
@@ -163,6 +164,8 @@ def main():
         for name in names:
             versions[name] = json.loads((packages / name / 'package.json').read_text())['version']
     Path('/etc/ciab-versions.json').write_text(json.dumps(versions, indent=2))
+    if settings.get('bundle'):
+        Path('/etc/crux-deployment.pending.json').replace('/etc/crux-deployment.json')
     print('Production installation, sandbox/model probes and service configuration completed. Use devctl run to start CRUX.')
 
 

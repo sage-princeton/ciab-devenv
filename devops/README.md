@@ -18,3 +18,7 @@ When available, the selected source's Python contracts validate Scaffold setting
 Local resource drivers use the selected production lifecycle when available.
 `bootstrap` reconciles services then the named Box; `reset --confirm NAME` deletes
 only that environment's isolated machine and labeled Compose resources.
+
+Sources with native bundling use that implementation for payload assembly and
+Box staging. Earlier source revisions use their production install/configure
+scripts directly. Both leave the Run stopped until `devctl run`.

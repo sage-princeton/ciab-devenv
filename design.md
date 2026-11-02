@@ -66,3 +66,9 @@ machine names for unrelated work.
 
 Shutdown waits for OrbStack to report the named Box stopped before returning; a
 bounded timeout surfaces stalled shutdown while preserving evidence for cleanup.
+
+The bundle adapter imports the selected source's assembler on the host and runs
+its Box staging implementation inside OrbStack. It then installs/configures the
+same production Scaffold with explicit local fixture endpoints. Bundle hashes
+and installed source identity are recorded in evidence and on the Box; temporary
+payloads are not an operational database.
