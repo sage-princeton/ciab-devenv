@@ -203,4 +203,3 @@ before provisioning. The removed runner's legacy Docker work volume is not
 migrated or automatically deleted; preserve/export any old evidence before
 manually discarding that volume. Legacy machine subcommands `create`, `provision`
 and `delete` are replaced by `bootstrap`/`provision` and confirmed `reset`.
-
