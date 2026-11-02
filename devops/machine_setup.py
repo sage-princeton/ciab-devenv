@@ -36,9 +36,11 @@ def replace_tree(source, destination, preserve=()):
 
 
 def main():
-    """Read staged settings and install/configure a stopped production Scaffold.
+    """Install the production bundle, configure fixtures and verify a stopped Scaffold.
 
-    :returns: None; writes Box configuration or raises on a failed install/probe.
+    Reads private staged settings/secrets and promotes the pending Box marker only
+    after all installation/configuration probes succeed.
+    :returns: None; updates the Box or raises on failure.
     """
 
     os.umask(0o022)

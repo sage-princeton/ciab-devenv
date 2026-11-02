@@ -30,6 +30,11 @@ def assignments(path, keys):
 
 
 def pins(source, platform='codex'):
+    """Read controller and agent dependencies from the selected production declarations.
+
+    :param source: Trusted production checkout.
+    :param platform: ACP agent platform whose dependencies are needed.
+    :returns: Dependency settings, with fallback for older production sources."""
     if (source / 'devops/crux_devops/dependencies.py').is_file():
         from importlib import import_module
         from devops.production import contracts
@@ -81,7 +86,11 @@ def load_archive(instance, settings):
 
 
 class Client:
+    """Authenticate and operate the local AgentRQ fixture through its HTTPS API."""
     def __init__(self, instance):
+        """Bind local service credentials and use the selected production API client if available.
+
+        :param instance: Named environment with its private service credentials and CA."""
         self.instance = instance
         self.base = f'https://localhost:{instance.data["port"] + 1}/api/v1'
         context = ssl.create_default_context(cafile=str(instance.root / 'certs/ca.crt'))
@@ -98,6 +107,13 @@ class Client:
         self.request('/auth/user')
 
     def request(self, path, body=None, method=None):
+        """Send an authenticated JSON API request using the production or legacy client.
+
+        :param path: AgentRQ API-relative path.
+        :param body: Optional JSON request body.
+        :param method: Optional HTTP method override.
+        :returns: Decoded API result.
+        :raises DevError: AgentRQ returns an operation failure."""
         if self.production is not None:
             try:
                 return self.production.request(path, body, method)
