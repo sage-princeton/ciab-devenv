@@ -48,6 +48,11 @@ def stage_directory(source: Path, destination: Path) -> None:
 
 
 class Environment:
+    """Load a named test environment's private settings and derive its resource names.
+
+    :param name: Local instance name; independent environments must use distinct names.
+    """
+
     def __init__(self, name: str):
         if not NAME.fullmatch(name):
             raise DevError("Instance name must start with a lowercase letter and contain at most 36 letters, digits or hyphens.")
