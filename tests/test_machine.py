@@ -63,11 +63,12 @@ class MachineTests(unittest.TestCase):
 
     def test_idle_check_and_shutdown_use_selected_service(self):
         """Verify idle check and shutdown use selected service."""
-        with patch.object(self.machine, 'state', return_value={'state': 'running'}):
+        with patch.object(self.machine, 'state', return_value={'state': 'running'}) as state:
             with patch.object(self.machine, 'call', return_value=subprocess.CompletedProcess([], 0, 'active')):
                 with self.assertRaisesRegex(DevError, 'crux-sdk-run is active'):
                     self.machine.require_idle()
             with patch.object(self.machine, 'call') as remote, patch('subprocess.run') as host:
+                state.side_effect = [{'state': 'running'}, {'state': 'stopped'}]
                 self.machine.stop()
                 self.assertIn(SDK.service, remote.call_args.args)
                 host.assert_called_once_with(['orb', 'stop', self.machine.name], check=True)
