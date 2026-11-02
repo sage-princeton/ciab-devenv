@@ -82,3 +82,7 @@ updates those same Python, Compose, Dockerfile and GitHub Actions declarations.
 The scheduled service audit resolves images from Compose, exports SPDX and scans
 vulnerabilities. Box package inventory complements these image reports with the
 actual provisioned packages recorded by the environment.
+
+The service audit is reporting only: findings do not fail the workflow. Its
+artifacts complement Dependabot alerts and must be inspected when reviewing
+fixture updates; a successful scan does not imply vulnerability-free images.
