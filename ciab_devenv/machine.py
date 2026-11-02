@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import tarfile
 import time
+import tempfile
+from pathlib import Path
 
 from .config import ROOT, DevError, private_write, source_info, stage_directory
 
@@ -16,10 +18,20 @@ PROVISION_FILES = SDK.required_files
 
 
 def validate_source(source, scaffold='sdk'):
+    """Reject a source missing the selected Scaffold provisioning files.
+
+    :param source: Selected production worktree.
+    :param scaffold: Scaffold for this operation.
+    """
     get_scaffold(scaffold).validate_source(source)
 
 
 def scrub(text, values):
+    """Return output with known credential values and recognizable API keys redacted.
+
+    :param text: Output to sanitize.
+    :param values: Credential mappings used only for redaction.
+    """
     import re
     for key, value in values.items():
         if isinstance(value, str) and len(value) > 6 and any(s in key.upper() for s in ('KEY', 'TOKEN', 'PASSWORD', 'SECRET')):
@@ -28,6 +40,10 @@ def scrub(text, values):
 
 
 def secret_values(value):
+    """Collect nested secret strings for output redaction without logging them.
+
+    :param value: Value for this operation.
+    """
     if isinstance(value, dict):
         return [text for child in value.values() for text in secret_values(child)]
     if isinstance(value, list):
@@ -36,6 +52,12 @@ def secret_values(value):
 
 
 def show_report(instance, run_id='latest', output=None):
+    """Print or export recorded evidence independently of the environment runtime.
+
+    :param instance: Named local environment.
+    :param run_id: Evidence identifier or latest.
+    :param output: Optional evidence export directory.
+    """
     reports = instance.root / 'reports'
     if run_id == 'latest':
         found = list(reports.glob('*/report.json'))
@@ -54,20 +76,31 @@ def show_report(instance, run_id='latest', output=None):
 
 
 class Machine:
+    """Operate the named isolated Ubuntu Box and collect verification evidence."""
     def __init__(self, instance):
+        """Bind the selected environment and its deterministic resource names.
+
+        :param instance: Named local environment.
+        """
         self.instance = instance
         self.name = instance.project + '-run'
-        self.receipt = instance.root / 'provisioned.json'
 
     def call(self, *args, capture=False, check=True):
+        """Execute a command as root in the isolated machine and return its process result.
+
+        :param capture: Whether to capture command output.
+        :param check: Whether a nonzero command result raises.
+        """
         return subprocess.run(['orb', 'run', '--machine', self.name, '--user', 'root', '--workdir', '/tmp',
                                *map(str, args)], check=check, capture_output=capture, text=True)
 
     def state(self):
+        """Return current OrbStack state for the named machine, or None when absent."""
         machines = json.loads(subprocess.check_output(['orb', 'list', '--format', 'json'], text=True))
         return next((m for m in machines if m['name'] == self.name), None)
 
     def ensure(self):
+        """Create the named isolated machine if absent, otherwise start it when stopped."""
         state = self.state()
         if state is None:
             subprocess.run(['orb', 'create', '--isolated', '--user', 'ubuntu', '--memory', '4G', '--cpus', '2',
@@ -78,6 +111,7 @@ class Machine:
             subprocess.run(['orb', 'start', self.name], check=True)
 
     def require_running(self):
+        """Reject an absent, stopped or non-isolated machine before remote execution."""
         state = self.state()
         if not state or state['state'] != 'running':
             raise DevError('The Ubuntu machine is stopped or absent. Run bootstrap, or up for an existing instance.')
@@ -85,25 +119,45 @@ class Machine:
             raise DevError('The Ubuntu machine must be isolated.')
 
     def require_idle(self):
+        """Reject operations while the selected research service is active."""
         state = self.state()
         if state and state['state'] == 'running':
             result = self.call('systemctl', 'is-active', self.instance.scaffold.service, capture=True, check=False)
             if result.stdout.strip() in ('active', 'activating', 'deactivating'):
                 raise DevError(f'{self.instance.scaffold.service} is active. Wait for the current run or use down to stop it.')
 
+    def installed(self):
+        """Read installed Box metadata, or return None when unavailable.
+
+        :returns: Installed source/scaffold settings from the running Box.
+        """
+        state = self.state()
+        if not state or state['state'] != 'running':
+            return None
+        result = self.call('cat', '/etc/ciab-deployment.json', capture=True, check=False)
+        if result.returncode:
+            return None
+        return json.loads(result.stdout)
+
     def require_provisioned(self):
+        """Read installed Box settings and reject changed source or Scaffold selections."""
         self.require_running()
-        if not self.receipt.exists():
+        installed = self.installed()
+        if installed is None:
             raise DevError('Provision this machine with a caller-supplied --drop-in first.')
-        receipt = json.loads(self.receipt.read_text())
-        receipt_platform = receipt.get('platform', 'openai-agents' if receipt.get('scaffold', 'sdk') == 'sdk' else 'codex')
-        if (receipt.get('scaffold', 'sdk'), receipt_platform) != (self.instance.scaffold.name, self.instance.scaffold.platform):
+        installed_platform = installed.get('platform', 'openai-agents' if installed.get('scaffold', 'sdk') == 'sdk' else 'codex')
+        if (installed.get('scaffold', 'sdk'), installed_platform) != (self.instance.scaffold.name, self.instance.scaffold.platform):
             raise DevError('Selected scaffold changed since provisioning. Reprovision before testing.')
-        if receipt['source'] != source_info(self.instance.source):
+        if installed['source'] != source_info(self.instance.source):
             raise DevError('Selected source changed since provisioning. Run provision --drop-in PATH before testing.')
-        return receipt
+        return installed
 
     def push(self, file, target):
+        """Copy a private file into the machine and remove its intermediate upload.
+
+        :param file: Private input file outside source.
+        :param target: Absolute destination inside the machine.
+        """
         subprocess.run(['orb', 'push', '--machine', self.name, str(file)], check=True, capture_output=True)
         self.call('install', '-m', '600', '/home/ubuntu/' + file.name, target)
         self.call('rm', '-f', '/home/ubuntu/' + file.name)
@@ -138,6 +192,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         self.call('systemctl', 'enable', '--now', 'ciab-fixture-https', 'ciab-fixture-storage')
 
     def run_units(self):
+        """Return installed systemd units associated with the selected Scaffold."""
         units = [self.instance.scaffold.service]
         if self.instance.scaffold.name == 'acp' and self.instance.scaffold.platform == 'codex':
             result = self.call('systemctl', 'show', '--property=LoadState', '--value', 'crux-codex-live-trace',
@@ -147,6 +202,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         return units
 
     def stop_run(self):
+        """Stop research units and stop the machine if service shutdown fails."""
         self.call('systemctl', 'stop', *self.run_units(), capture=True, check=False)
         for unit in self.run_units():
             result = self.call('systemctl', 'is-active', unit, capture=True, check=False)
@@ -155,6 +211,7 @@ p.write_text('\\n'.join(lines)+'\\n')
                 raise DevError('Run service did not stop; stopped the isolated machine instead.')
 
     def stop(self):
+        """Stop owned running services and machine without waking a stopped machine."""
         state = self.state()
         if state and state['state'] == 'running':
             try:
@@ -163,11 +220,15 @@ p.write_text('\\n'.join(lines)+'\\n')
                 subprocess.run(['orb', 'stop', self.name], check=True)
 
     def delete(self):
+        """Delete the named OrbStack machine when it exists."""
         if self.state():
             subprocess.run(['orb', 'delete', '--force', self.name], check=True)
-        self.receipt.unlink(missing_ok=True)
 
     def provision(self, args):
+        """Install selected production source and inputs, publishing Box metadata on success.
+
+        :param args: Parsed CLI arguments.
+        """
         from .cli import compose
         self.instance.scaffold.validate_source(self.instance.source)
         scaffold = self.instance.scaffold
@@ -187,7 +248,6 @@ p.write_text('\\n'.join(lines)+'\\n')
             from .agentrq import pins
             runtime_pins = pins(self.instance.source)
         self.require_idle()
-        self.receipt.unlink(missing_ok=True)
         source_revision = source_info(self.instance.source)
         self.instance.stage_source()
         if source_revision != source_info(self.instance.source):
@@ -223,6 +283,7 @@ p.write_text('\\n'.join(lines)+'\\n')
                         raise
                     time.sleep(1)
         self.ensure()
+        self.call('rm', '-f', '/etc/ciab-deployment.json')
         self.network()
         devenv_revision = source_info(ROOT)
         archive = self.instance.root / 'machine-source.tar.gz'
@@ -272,22 +333,25 @@ p.write_text('\\n'.join(lines)+'\\n')
             private_write(report_dir / 'output.log', clean)
             raw.unlink()
             print(clean[-12000:])
-            receipt = {'source': source_revision, 'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins,
+            installed = {'source': source_revision, 'scaffold': scaffold.name, 'platform': scaffold.platform, 'provider': provider, 'pins': runtime_pins,
                        'workspace_id': self.instance.data.get('agentrq_workspace_id'),
                        'controller_image': self.instance.data.get('agentrq_image'), 'model': settings['model'], 'effort': settings['effort'],
                        'run_slug': settings['run_slug'], 'drop_in': str(args.drop_in.resolve()) if args.drop_in else None,
                        'provisioned_devenv': devenv_revision, 'provisioning_inputs': inputs,
                        'services': {k: env[k] for k in ('LANGFUSE_BASE_URL', 'COST_TRACKER_URL', 'CIAB_RUNPOD_HOST')}}
-            report = dict(receipt, run_id=run_id, suite='provision', exit_code=code,
+            report = dict(installed, run_id=run_id, suite='provision', exit_code=code,
                           status='succeeded' if code == 0 else 'failed', elapsed_seconds=round(time.monotonic()-started, 2),
                           devenv=source_info(ROOT), machine=self.name)
             private_write(report_dir / 'report.json', json.dumps(report, indent=2) + '\n')
             if code == 0:
                 versions = self.call('cat', '/etc/ciab-versions.json', capture=True)
-                receipt['versions'] = json.loads(versions.stdout)
-                report['versions'] = receipt['versions']
+                installed['versions'] = json.loads(versions.stdout)
+                report['versions'] = installed['versions']
                 private_write(report_dir / 'report.json', json.dumps(report, indent=2) + '\n')
-                private_write(self.receipt, json.dumps(receipt, indent=2))
+                with tempfile.TemporaryDirectory(prefix='ciab-installed-') as directory:
+                    metadata = Path(directory) / 'installed.json'
+                    private_write(metadata, json.dumps(installed, indent=2))
+                    self.push(metadata, '/etc/ciab-deployment.json')
             print(f'Evidence: {report_dir}/report.json')
             return code
         finally:
@@ -298,7 +362,14 @@ p.write_text('\\n'.join(lines)+'\\n')
                 self.call('rm', '-f', '/tmp/machine-secrets.json', '/tmp/machine-settings.json', '/tmp/machine-source.tar.gz', check=False)
 
     def job(self, suite, argv=(), timeout=900, input_path=None):
-        receipt = self.require_provisioned()
+        """Execute a bounded machine command and collect sanitized evidence and artifacts.
+
+        :param suite: Generic verification operation.
+        :param argv: Argument vector passed without shell interpretation.
+        :param timeout: Execution limit in seconds.
+        :param input_path: Optional caller-supplied input directory.
+        """
+        installed = self.require_provisioned()
         if suite not in ('fixture', 'snapshot'):
             self.require_idle()
         run_id = new_id()
@@ -316,7 +387,7 @@ p.write_text('\\n'.join(lines)+'\\n')
             self.call('rm', '-rf', '/input')
             self.call('tar', '-xzf', '/tmp/ciab-input.tar.gz', '-C', '/', '--no-same-owner')
             self.call('chmod', '-R', 'a+rX,go-w', '/input')
-        job = dict(receipt, run_id=run_id, suite=suite, argv=list(argv), timeout=timeout, inputs=inputs,
+        job = dict(installed, run_id=run_id, suite=suite, argv=list(argv), timeout=timeout, inputs=inputs,
                    devenv=source_info(ROOT), machine=self.name)
         request = self.instance.root / ('job-' + run_id + '.json')
         private_write(request, json.dumps(job))
@@ -348,4 +419,5 @@ p.write_text('\\n'.join(lines)+'\\n')
 
 
 def new_id():
+    """Return a timestamped random identifier for one evidence collection."""
     return time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + os.urandom(3).hex()

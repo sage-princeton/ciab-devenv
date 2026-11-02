@@ -47,3 +47,11 @@ port is caller-configurable. Two systemd-managed TCP relays on the Box preserve
 stable fixture hostnames and TLS end to end, including SDKs with fixed API ports.
 This avoids depending on direct routing between an isolated machine and Docker
 bridge addresses. Other containers keep their private Compose connections.
+
+
+Deployment metadata lives at `/etc/ciab-deployment.json` on the isolated Box.
+Execution reads it and compares its installed source/scaffold against the selected
+worktree. A stopped Box reports installation status as unknown; status never wakes
+it. Laptop reports are evidence only and are not required to operate the Box.
+Production contracts are imported from the selected worktree under a unique
+module name so testing two revisions cannot accidentally reuse another's code.

@@ -21,11 +21,17 @@ def execute(argv, *, env=None, timeout=None):
 
 
 def compose(instance, *args, timeout=None):
+    """Execute a Compose operation against the named environment and return its exit code.
+
+    :param instance: Named local environment.
+    :param timeout: Execution limit in seconds.
+    """
     return execute(['docker', '--context', 'orbstack', 'compose', '--project-name', instance.project,
                     *[arg for path in instance.compose_files() for arg in ('--file', str(path))], *args], env=instance.process_env(), timeout=timeout)
 
 
 def runtime_ready():
+    """Verify the explicitly required OrbStack runtime and local tools."""
     if not shutil.which('orb'):
         raise DevError('OrbStack is missing. Install it and open the app once.')
     result = subprocess.run(['docker', '--context', 'orbstack', 'info', '--format', '{{.OSType}}'], capture_output=True, text=True)
@@ -40,12 +46,16 @@ def provisioning_arguments(parser):
 
 
 def parser():
+    """Build the local environment command-line parser."""
     p = argparse.ArgumentParser(description='Provision and test CRUX on isolated OrbStack Ubuntu.', epilog=(
         'Credentials: select the provider test key via direnv. Codex/SDK default to gpt-5.4-mini / low; Claude requires CRUX_MODEL. '
         'State is private under ~/.local/state/ciab-devenv/<name>. down stops the machine and containers.'))
     p.add_argument('--name', default='dev')
     p.add_argument('--usage', action='store_true')
     sub = p.add_subparsers(dest='command')
+    s = sub.add_parser('plan', help='validate a Run with the selected source contracts; creates no environment')
+    s.add_argument('--source', type=Path, required=True)
+    s.add_argument('--spec', type=Path, required=True)
     for command in ('setup', 'bootstrap'):
         s = sub.add_parser(command, help='configure only' if command == 'setup' else 'configure, start services and provision Ubuntu')
         s.add_argument('--source', type=Path, default=DEFAULT_SOURCE)
@@ -95,6 +105,11 @@ def parser():
 
 
 def down(instance, machine):
+    """Stop the named machine and its service containers without deleting evidence.
+
+    :param instance: Named local environment.
+    :param machine: Machine for this operation.
+    """
     try:
         machine.stop()
     finally:
@@ -110,6 +125,10 @@ def down(instance, machine):
 
 
 def main(argv=None):
+    """Dispatch CLI operations for the explicitly selected local environment.
+
+    :param argv: Argument vector passed without shell interpretation.
+    """
     p = parser()
     args = p.parse_args(argv)
     if args.usage or not args.command:
@@ -123,6 +142,10 @@ def main(argv=None):
         return 0
     operation_lock = None
     try:
+        if args.command == 'plan':
+            from devops.production import contracts
+            print(json.dumps(contracts(args.source, required=True).Run.load(args.spec).plan(), indent=2))
+            return 0
         instance = Environment(args.name)
         if args.command not in ('status', 'logs', 'fixture', 'report', 'machine', 'task'):
             instance.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -162,23 +185,23 @@ def main(argv=None):
             instance.scaffold.validate_source(source)
             instance.data['source'] = str(source)
             private_write(instance.path, json.dumps(instance.data, indent=2) + '\n')
-            machine.receipt.unlink(missing_ok=True)
             print('Source selected. Run provision --drop-in PATH to install it before testing.')
             return 0
         if args.command == 'up':
             machine.require_idle()
             if not (instance.root / 'certs/ca.crt').exists():
                 raise DevError('This instance uses legacy TLS certificates. Reprovision before up.')
-            if not machine.receipt.exists():
+            if not machine.state():
                 raise DevError('Use bootstrap or provision --drop-in PATH to install the machine first.')
             result = compose(instance, 'up', '-d', '--wait', '--wait-timeout', '300')
             if not result:
                 machine.ensure()
+                machine.require_provisioned()
                 machine.network()
             return result
         if args.command == 'status':
             print(json.dumps({'instance': instance.name, 'source': source_info(instance.source),
-                              'machine': machine.state(), 'provisioned': machine.receipt.exists(), 'scaffold': instance.scaffold.name,
+                              'machine': machine.state(), 'provisioned': bool(machine.installed()) if machine.state() and machine.state()['state'] == 'running' else None, 'scaffold': instance.scaffold.name,
                               'platform': instance.scaffold.platform,
                               'agentrq': f'https://localhost:{instance.data["port"] + 1}' if instance.scaffold.name == 'acp' else None,
                               'langfuse': f'http://localhost:{instance.data["port"]}', 'private_state': str(instance.root)}, indent=2))
@@ -229,7 +252,7 @@ def main(argv=None):
                 shutil.rmtree(instance.root)
             return result
         raise DevError('Unsupported command')
-    except (DevError, OSError, subprocess.CalledProcessError) as exc:
+    except (DevError, ValueError, TypeError, OSError, subprocess.CalledProcessError) as exc:
         print(f'devctl: {exc}', file=sys.stderr)
         return 2
     finally:

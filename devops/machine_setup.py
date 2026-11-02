@@ -9,10 +9,21 @@ from pathlib import Path
 
 
 def run(argv, **kwargs):
+    """Execute a command and raise if it fails.
+
+    :param argv: Argument vector passed without a shell.
+    :param kwargs: Additional subprocess.run options.
+    :returns: None."""
     subprocess.run(argv, check=True, **kwargs)
 
 
 def replace_tree(source, destination, preserve=()):
+    """Replace destination contents while preserving specified top-level children.
+
+    :param source: Staged directory to copy.
+    :param destination: Directory to replace.
+    :param preserve: Top-level child names to keep.
+    :returns: None; updates the destination filesystem."""
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     for child in destination.iterdir():
@@ -23,6 +34,10 @@ def replace_tree(source, destination, preserve=()):
 
 
 def main():
+    """Read staged settings and install/configure a stopped production Scaffold.
+
+    :returns: None; writes Box configuration or raises on a failed install/probe.
+    """
     os.umask(0o022)
     settings = json.loads(Path('/tmp/machine-settings.json').read_text())
     staging = Path('/opt/ciab-staging')
@@ -57,6 +72,12 @@ def main():
         Path('/etc/crux-provision.json').unlink(missing_ok=True)
     environment = dict(os.environ, AGENT_PLATFORM=scaffold.platform, DEBIAN_FRONTEND='noninteractive')
     environment.update(adapter.settings_environment(settings))
+    from devops.production import scaffold_settings
+    production_scaffold = scaffold_settings('/source', settings)
+    if production_scaffold is not None:
+        if production_scaffold.service != scaffold.service:
+            raise ValueError('Local adapter service differs from the selected production Scaffold')
+        environment.update(production_scaffold.environment())
     run(['bash', str(source / 'install-run.sh')], env=environment)
     adapter.installed(scaffold)
     run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
@@ -78,7 +99,6 @@ def main():
                        AWS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt',
                        RUN_SECRETS_PATH='/tmp/machine-secrets.json', SYSTEM_SSM_PARAM='/crux/local/system/env',
                        RUN_SLUG=settings['run_slug'])
-    environment.update(adapter.settings_environment(settings))
     run(['bash', str(source / 'configure-run.sh')], env=environment)
     adapter.configured(scaffold)
     values = settings['environment']

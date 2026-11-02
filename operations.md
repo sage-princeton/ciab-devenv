@@ -71,7 +71,7 @@ home directory, Docker socket, or SSH agent is shared with the machine.
 Reprovision after changing source, dependencies, drop-in configuration, model
 settings or service overrides. This retains the run workspace and state; it does
 not reset a completed run. Use a fresh named instance for fresh acceptance runs.
-Execution refuses if the selected source no longer matches the provisioning receipt.
+Execution refuses if the selected source no longer matches the installed Box configuration.
 
 ```sh
 direnv exec . ./devctl --name sdk provision --drop-in "$CRUX_DROPIN"
@@ -79,7 +79,7 @@ direnv exec . ./devctl --name sdk provision --drop-in "$CRUX_DROPIN"
 direnv exec . ./devctl --name sdk provision --drop-in /path/to/that-pr-drop-in
 ```
 
-`select` records one worktree and invalidates the old provisioning receipt. It
+`select` records one worktree and requires reprovisioning before execution. It
 never combines PR revisions. There is no `build` command or runner image.
 
 `exec` executes arbitrary commands as `ubuntu` on the same provisioned machine,

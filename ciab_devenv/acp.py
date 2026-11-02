@@ -11,11 +11,16 @@ from .machine import new_id, scrub
 
 
 def task_control(machine, args):
+    """Apply an explicit task action and export sanitized execution evidence.
+
+    :param machine: Named isolated Box with a configured ACP Scaffold.
+    :param args: Parsed task action and identifier.
+    :returns: Zero on success, otherwise a nonzero operation status."""
     if machine.instance.scaffold.name != 'acp':
         raise DevError('Task controls require an ACP instance.')
-    receipt = machine.require_provisioned()
+    installed = machine.require_provisioned()
     directory = machine.instance.root / 'reports' / new_id()
-    data = dict(receipt, suite='task-' + args.action, task_id=args.task_id,
+    data = dict(installed, suite='task-' + args.action, task_id=args.task_id,
                 run_id=directory.name, devenv=source_info(ROOT), command=['devctl', 'task', args.action, args.task_id])
     started = time.monotonic()
     code = 2
@@ -57,7 +62,12 @@ def task_control(machine, args):
 
 
 def run_task(machine, args):
-    receipt = machine.require_provisioned()
+    """Start or observe a bounded ACP task and record its actual outcome.
+
+    :param machine: Named isolated Box with installed source metadata.
+    :param args: Parsed Run command, task selection and timeout.
+    :returns: Task exit status after exporting evidence and stopping owned work."""
+    installed = machine.require_provisioned()
     machine.require_idle()
     client = Client(machine.instance)
     task_id = getattr(args, 'task_id', None)
@@ -76,7 +86,7 @@ def run_task(machine, args):
     run_id = new_id()
     directory = machine.instance.root / 'reports' / run_id
     started = time.monotonic()
-    data = dict(receipt, run_id=run_id, suite=args.command, timeout=args.timeout,
+    data = dict(installed, run_id=run_id, suite=args.command, timeout=args.timeout,
                 started_at=datetime.now(timezone.utc).isoformat(), devenv=source_info(ROOT),
                 machine=machine.name, events=[], status='running',
                 command=['devctl', args.command],
