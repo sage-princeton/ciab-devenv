@@ -15,6 +15,7 @@ Reusable methods belong in [verification/](../verification/README.md).
 | `test_environment.py` | Tracked local edits, credential exclusions, named-instance isolation, private permissions, input staging and explicit endpoint overrides |
 | `test_acp.py` | Platform settings, task lifecycle, cancellation fallback, timeout/interruption, workspace scope and redaction |
 | `test_machine.py` | Provisioning capability/source drift, stopped-machine handling, evidence retrieval and credential redaction |
+| `test_layout.py` | SDK source discovery before and after the upstream directory reorganization |
 | `test_fixtures.py` | HTTP authentication, injected failures/recovery, retained message identities and caller-configured cloud responses |
 
 Run from the repository root in a configured instance:

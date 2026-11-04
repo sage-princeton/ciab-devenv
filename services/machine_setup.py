@@ -27,6 +27,7 @@ def main():
     settings = json.loads(Path('/tmp/machine-settings.json').read_text())
     staging = Path('/opt/ciab-staging')
     sys.path.insert(0, str(staging / 'devenv'))
+    from ciab_devenv.layout import source_path
     from ciab_devenv.scaffolds import get_scaffold
     scaffold = get_scaffold(settings.get('scaffold', 'sdk'), settings.get('platform'))
     adapter = import_module('services.' + scaffold.name + '_setup')
@@ -42,7 +43,7 @@ def main():
     replace_tree(staging / 'source', '/source')
     replace_tree(staging / 'devenv', '/devenv')
     run(['chmod', '-R', 'a+rX,go-w', '/source', '/devenv'])
-    source = Path('/source/src/ec2-workspaces')
+    source = source_path('/source', 'src/ec2-workspaces')
     Path('/usr/local/lib/crux').mkdir(parents=True, exist_ok=True)
     for name in ('run_provision.py', 'run_service_auth.py'):
         if (source / name).is_file():

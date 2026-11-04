@@ -1,9 +1,10 @@
 """Stage SDK source and select its production configuration."""
+from ciab_devenv.layout import source_path
 from services.machine_setup import replace_tree, run
 
 
 def prepare(settings):
-    replace_tree('/source/src/sdk-scaffold', '/opt/crux-sdk-scaffold', preserve=('.venv',))
+    replace_tree(source_path('/source', 'src/sdk-scaffold'), '/opt/crux-sdk-scaffold', preserve=('.venv',))
     run(['chmod', '-R', 'a+rX,go-w', '/opt/crux-sdk-scaffold'])
 
 

@@ -4,8 +4,11 @@ import os
 import subprocess
 from pathlib import Path
 
+from ciab_devenv.layout import source_path
+
 root = Path("/source")
-sdk = root / "src/sdk-scaffold"
+sdk = source_path(root, "src/sdk-scaffold")
+demo = "run-harness" if (sdk / "run-harness").is_dir() else "examples"
 environment = {
     k: v
     for k, v in os.environ.items()
@@ -28,12 +31,12 @@ commands = [
             "unittest",
             "discover",
             "-s",
-            "examples/web-cms-product-change/workspace/site",
+            demo + "/web-cms-product-change/workspace/site",
         ],
     ),
     (sdk, ["shellcheck", *map(str, (sdk / "docker").glob("*.sh"))]),
 ]
-for directory in ("tests/workspace-provisioning", "lambda/langfuse_cost_tracker/tests"):
+for directory in ("devops/ec2-workspaces/tests", "tests/workspace-provisioning", "lambda/langfuse_cost_tracker/tests"):
     if any((root / directory).glob("test*.py")):
         commands.append(
             (root, ["python", "-m", "unittest", "discover", "-s", directory, "-v"])

@@ -27,7 +27,9 @@ Reusable helpers live in `verification/`. See [AGENTS.md](AGENTS.md) for agent g
 
 Prerequisites: macOS, OrbStack running, Docker Compose v2, Python 3.11+, Git,
 OpenSSL and direnv. Use a CRUX worktree containing the selected production scaffold module
-(`src/ec2-workspaces/scaffolds/sdk.sh` or `acp.sh`).
+(`devops/ec2-workspaces/scaffolds/sdk.sh` for SDK, or
+`src/ec2-workspaces/scaffolds/acp.sh` for ACP). SDK validation also accepts older
+checkouts with `src/ec2-workspaces/` and `src/sdk-scaffold/`.
 
 1. **Prepare a single PR worktree and drop-in.** Follow its `OPERATOR_GUIDE.md`
    and the upstream SDK README. Resolve placeholders, set bounded budgets, and
