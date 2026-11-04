@@ -93,6 +93,15 @@ class EnvironmentTests(unittest.TestCase):
         self.assertFalse((self.root / "staged/.envrc").exists())
         self.assertFalse((self.root / "staged/outside").exists())
 
+    def test_published_fixture_ports_derive_from_one_base_port(self):
+        """Keep stable fixture URLs while deriving isolated host port mappings."""
+        instance = Environment('ports')
+        instance.setup(self.source, 24500)
+        values = instance.compose_env()
+        self.assertEqual(values['CIAB_EDGE_PORT'], '24501')
+        self.assertEqual(values['CIAB_STORAGE_PORT'], '24502')
+        self.assertEqual(values['LANGFUSE_BASE_URL'], 'https://langfuse.test')
+
     def test_explicit_live_override_does_not_change_other_services(self):
         instance = Environment("sample")
         instance.setup(self.source, 23100)

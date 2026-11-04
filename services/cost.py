@@ -5,7 +5,9 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-path = Path("/source/lambda/langfuse_cost_tracker/lambda_function.py")
+path = Path("/source/monitoring/costs/langfuse/lambda_function.py")
+if not path.is_file():
+    path = Path("/source/lambda/langfuse_cost_tracker/lambda_function.py")
 bundle = Path("/tmp/ciab-ca.pem")
 bundle.write_bytes(Path("/etc/ssl/certs/ca-certificates.crt").read_bytes() + b"\n" + Path("/certs/ca.crt").read_bytes())
 os.environ["SSL_CERT_FILE"] = str(bundle)

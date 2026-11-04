@@ -27,7 +27,6 @@ services:
       AGENTRQ_SLACK_ENABLED: 'false'
     volumes: [agentrq:/_storage]
   edge:
-    ports: ['127.0.0.1:${CIAB_AGENTRQ_PORT}:443']
     networks:
       default:
         aliases: [agentrq.test]

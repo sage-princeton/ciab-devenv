@@ -2,13 +2,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ciab_devenv.layout import source_path
+from ciab_devenv.config import DevError
+from ciab_devenv.scaffolds import SDK
+from devops.source import required_path, source_path
 
 
 class SourceLayoutTests(unittest.TestCase):
+    """Preserve SDK discovery and diagnostics across the directory migration."""
+
     def test_current_and_legacy_layouts(self):
+        """Prefer canonical files while accepting existing legacy worktrees."""
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = Path(tmp).resolve()
             for current, legacy in (
                 ('devops/ec2-workspaces/install-run.sh', 'src/ec2-workspaces/install-run.sh'),
                 ('scaffolds/sdk/requirements.txt', 'src/sdk-scaffold/requirements.txt'),
@@ -16,12 +21,19 @@ class SourceLayoutTests(unittest.TestCase):
                 old = root / legacy
                 old.parent.mkdir(parents=True, exist_ok=True)
                 old.touch()
-                self.assertEqual(source_path(root, legacy), old)
+                self.assertEqual(required_path(root, legacy), old)
                 new = root / current
                 new.parent.mkdir(parents=True, exist_ok=True)
                 new.touch()
-                self.assertEqual(source_path(root, legacy), new)
+                self.assertEqual(required_path(root, legacy), new)
 
     def test_missing_path_still_reports_current_location(self):
-        self.assertEqual(source_path(Path('/missing'), 'src/sdk-scaffold'),
+        """Report canonical locations when the selected source is incomplete."""
+        self.assertEqual(source_path(Path('/missing'), 'sdk'),
                          Path('/missing/scaffolds/sdk'))
+
+    def test_source_validation_reports_resolved_missing_files(self):
+        """Name the missing canonical file in user-facing source errors."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(DevError, 'scaffolds/sdk/requirements.txt'):
+                SDK.validate_source(Path(tmp))

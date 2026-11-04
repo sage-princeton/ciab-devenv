@@ -1,36 +1,15 @@
-# Host orchestration
+# Host Invoker
 
-This Python package implements `devctl`: it selects a source worktree, manages
-private local state, and manages service containers and the isolated Ubuntu run machine.
-It contains no CRUX feature scenarios or acceptance criteria.
+Host CLI, source selection and private environment settings. Requires the root
+prerequisites; use the [parent runbook](../README.md) to operate named environments.
 
-**Key points:** the host orchestrates; the production systemd unit executes CRUX. Source and caller
-inputs are copied root-owned into the machine. Credentials come from the caller's direnv environment.
-Use the [root runbook](../README.md#developer-runbook-start-a-local-crux) to operate
-the environment and `./devctl --usage` for all command options.
+Inspect all commands from the repository root:
 
-| File | Responsibility |
-| --- | --- |
-| `__main__.py` | Python module entry point used by the root `devctl` script |
-| `__init__.py` | Package identity |
-| `cli.py` | Argument parsing, explicit OrbStack Compose calls, execution, report export and lifecycle commands |
-| `config.py` | Named instances, private credentials/certificates, tracked-source snapshots, input staging and live-service overrides |
-| `machine.py` | Isolated Ubuntu lifecycle, source validation, production provisioning, job dispatch and cached reports |
-| `agentrq.py` | Hash-checked controller image loading, private workspace creation and scoped API calls |
-| `acp.py` | Bounded task execution, concurrent controls, cleanup and host reports |
-| `scaffolds.py` | Scaffold source requirements, service identity, execution environment and command contracts |
+```sh
+./devctl --usage
+```
 
-`setup` and `bootstrap` accept `--scaffold sdk` (default) or `--scaffold acp`
-with `--platform codex|claude`. Source requirements and provisioning hooks follow
-the selected scaffold. Existing SDK instances without a scaffold field retain
-SDK behavior. Changing scaffold/platform/provider requires a separate instance;
-source changes require reprovisioning. Receipts and reports record the selection.
+## Development
 
-Each instance uses `~/.local/state/ciab-devenv/<name>` and Docker project
-`ciab-<name>`. `CIAB_STATE_ROOT` changes the host state parent. Never print the
-generated `instance.json` or private secret transport files in diagnostics.
-
-Changes to orchestration should preserve explicit instance scope, error exit
-codes, credential exclusion and source-switch protection. Exercise changed CLI
-commands practically and run the [environment tests](../tests/README.md).
-Machine execution is documented in [services/](../services/README.md).
+Run the [environment checks](../tests/README.md#development), then exercise changed
+commands with a fresh named instance, including shutdown and cleanup.

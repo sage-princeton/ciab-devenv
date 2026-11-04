@@ -10,7 +10,7 @@ from ciab_devenv.acp import run_task
 from ciab_devenv.agentrq import pins, prepare_image
 from ciab_devenv.config import DevError, Environment
 from ciab_devenv.scaffolds import ACP, SDK, get_scaffold
-from services.acp_setup import settings_environment
+from devops.acp_setup import settings_environment
 
 
 class ACPTests(unittest.TestCase):

@@ -109,26 +109,33 @@ class Machine:
         self.call('rm', '-f', '/home/ubuntu/' + file.name)
 
     def network(self):
+        """Relay local fixtures through published host ports and refresh Box aliases.
+
+        Stable fixture URLs work in SDKs and sandboxes without depending on
+        direct machine-to-container routing. Only loopback ports are exposed.
+        """
         env = self.instance.compose_env()
-        addresses = {}
-        for service in ('edge', 'storage'):
-            addresses[service] = subprocess.check_output(
-                ['docker', '--context', 'orbstack', 'inspect', self.instance.project + '-' + service + '-1',
-                 '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'], text=True).strip()
-            if not addresses[service]:
-                raise DevError('Start local service containers before using the machine.')
-        hosts = self.instance.root / 'machine-hosts.json'
-        private_write(hosts, json.dumps({'edge': addresses['edge'], 'storage': addresses['storage'],
-                                        'runpod': env['CIAB_RUNPOD_HOST']}))
-        self.push(hosts, '/tmp/ciab-hosts.json')
-        self.call('python3', '-c', '''import json
+        self.call('sh', '-c', 'command -v socat >/dev/null || (apt-get update -qq && apt-get install -y -qq socat)')
+        units = {name: f"""[Unit]
+Description=CIAB local {name} fixture relay
+After=network-online.target
+[Service]
+ExecStart=/usr/bin/socat TCP-LISTEN:{local},bind=127.0.0.1,reuseaddr,fork TCP:host.orb.internal:{env[key]}
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+""" for name, local, key in [('https', 443, 'CIAB_EDGE_PORT'), ('storage', 9000, 'CIAB_STORAGE_PORT')]}
+        self.call('python3', '-c', """import json,sys
 from pathlib import Path
-v=json.loads(Path('/tmp/ciab-hosts.json').read_text())
+for name, content in json.loads(sys.argv[1]).items():
+    Path('/etc/systemd/system/ciab-fixture-'+name+'.service').write_text(content)
 p=Path('/etc/hosts')
 lines=[s for s in p.read_text().splitlines() if '# ciab-services' not in s]
-lines += [v['edge']+' langfuse.test cost.test fixtures.test agentrq.test '+v['runpod']+' # ciab-services', v['storage']+' storage # ciab-services']
+lines.append('127.0.0.1 langfuse.test cost.test fixtures.test agentrq.test storage '+sys.argv[2]+' # ciab-services')
 p.write_text('\\n'.join(lines)+'\\n')
-''')
+""", json.dumps(units), env['CIAB_RUNPOD_HOST'])
+        self.call('systemctl', 'daemon-reload')
+        self.call('systemctl', 'enable', '--now', 'ciab-fixture-https', 'ciab-fixture-storage')
 
     def run_units(self):
         units = [self.instance.scaffold.service]
@@ -222,7 +229,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         with tarfile.open(archive, 'w:gz') as output:
             output.add(self.instance.root / 'source', arcname='source')
             output.add(staging, arcname='input')
-            for name in ('services', 'ciab_devenv', 'verification', 'tests'):
+            for name in ('services', 'devops', 'monitoring', 'ciab_devenv', 'verification', 'tests'):
                 output.add(ROOT / name, arcname='devenv/' + name,
                            filter=lambda member: None if '__pycache__' in member.name else member)
             output.add(self.instance.root / 'certs/ca.crt', arcname='local.crt')
@@ -251,7 +258,7 @@ p.write_text('\\n'.join(lines)+'\\n')
             raw = report_dir / 'output.raw'
             with raw.open('w') as stream:
                 process = subprocess.Popen(['orb', 'run', '--machine', self.name, '--user', 'root', '--workdir', '/tmp',
-                                            'python3', '/opt/ciab-staging/devenv/services/machine_setup.py'],
+                                            'python3', '/opt/ciab-staging/devenv/devops/machine_setup.py'],
                                            stdout=stream, stderr=subprocess.STDOUT)
                 print(f'Provisioning {self.name}; log: {raw} (private). Production probes call the model provider.', flush=True)
                 try:
@@ -318,7 +325,7 @@ p.write_text('\\n'.join(lines)+'\\n')
         unit = 'ciab-job-' + run_id.lower()
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', unit,
                    '--property=TimeoutStopSec=30', '--property=KillMode=mixed',
-                   '/usr/bin/python3', '/devenv/services/machine_job.py', remote]
+                   '/usr/bin/python3', '/devenv/monitoring/machine_job.py', remote]
         try:
             result = self.call(*command, check=False)
             code = result.returncode
