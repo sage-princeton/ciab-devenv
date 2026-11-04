@@ -59,8 +59,11 @@ def main():
     environment.update(adapter.settings_environment(settings))
     run(['bash', str(source / 'install-run.sh')], env=environment)
     adapter.installed(scaffold)
+    test_requirements = Path('/source/requirements-dev.txt')
+    test_packages = (['-r', str(test_requirements)] if test_requirements.is_file()
+                     else ['pytest==8.4.2', 'ruff==0.14.1'])
     run(['/home/ubuntu/.local/bin/uv', 'pip', 'install', '--python', scaffold.python,
-         'pytest==8.4.2', 'ruff==0.14.1'])
+         *test_packages])
     drop = Path('/srv/crux-run/run-harness')
     preserve = ('workspace',) if (drop / 'workspace').exists() else ()
     replace_tree(staging / 'input/drop-in', drop, preserve=preserve)

@@ -32,6 +32,8 @@ for earlier PRs. All adapters and verification helpers share `devops/source.py`.
 Existing canonical components take precedence over legacy paths; missing components
 are reported at their canonical locations. There is no source-layout manifest. Production owns Scaffold
 behavior; the adapters supply local endpoints, certificates and OS integration.
+Verification tooling uses the selected source's `requirements-dev.txt` when present,
+with the existing test-tool versions retained for older sources without that file.
 
 Langfuse and storage are local services; Slack/mailbox/cloud APIs are limited
 fixtures. They never forward messages or cloud mutations to vendors. Actual inference
