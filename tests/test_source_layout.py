@@ -17,6 +17,7 @@ class SourceLayoutTests(unittest.TestCase):
 
     def test_older_sources_use_original_paths(self):
         """Keep old PR worktrees testable before the layout migration."""
+        (self.root / 'src/sdk-scaffold').mkdir(parents=True)
         self.assertEqual(source_path(self.root, "sdk"), self.root / "src/sdk-scaffold")
 
     def test_canonical_tree_uses_component_directories(self):

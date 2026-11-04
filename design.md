@@ -28,7 +28,9 @@ flowchart LR
 | `tests/` | Environment orchestration and fixture regression tests |
 
 Source lookup follows canonical component directories, with older layouts supported
-for earlier PRs. There is no source-layout manifest. Production owns Scaffold
+for earlier PRs. All adapters and verification helpers share `devops/source.py`.
+Existing canonical components take precedence over legacy paths; missing components
+are reported at their canonical locations. There is no source-layout manifest. Production owns Scaffold
 behavior; the adapters supply local endpoints, certificates and OS integration.
 
 Langfuse and storage are local services; Slack/mailbox/cloud APIs are limited

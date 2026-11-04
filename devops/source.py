@@ -30,7 +30,9 @@ def source_path(source, component, *parts):
     :returns: Source-contained path using the current or older layout.
     """
     source = Path(source).resolve()
-    layout = CURRENT if (source/'devops/ec2-workspaces').is_dir() else LEGACY
+    layout = CURRENT
+    if not (source / CURRENT[component]).exists() and (source / LEGACY[component]).exists():
+        layout = LEGACY
     relative = Path(layout[component])
     target = source / relative / Path(*parts)
     if relative.is_absolute() or not target.resolve().is_relative_to(source):

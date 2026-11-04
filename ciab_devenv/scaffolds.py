@@ -17,7 +17,14 @@ class Scaffold:
     required_files: tuple[str, ...]
 
     def validate_source(self, source):
-        missing = [name for name in self.required_files if not required_path(source, name).is_file()]
+        """Check provisioning files and report their resolved source locations.
+
+        :param source: Trusted CRUX checkout directory.
+        :raises DevError: Required files or a valid Git checkout are missing.
+        """
+        source = source.resolve()
+        paths = [required_path(source, name) for name in self.required_files]
+        missing = [str(path.relative_to(source)) for path in paths if not path.is_file()]
         if missing:
             raise DevError(f'Selected source lacks {self.name.upper()} provisioning: ' + ', '.join(missing))
         source_info(source)

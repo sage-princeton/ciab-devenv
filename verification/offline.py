@@ -4,10 +4,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from ciab_devenv.layout import source_path
+from devops.source import source_path
 
 root = Path("/source")
-sdk = source_path(root, "src/sdk-scaffold")
+sdk = source_path(root, "sdk")
 demo = "run-harness" if (sdk / "run-harness").is_dir() else "examples"
 environment = {
     k: v
@@ -36,10 +36,11 @@ commands = [
     ),
     (sdk, ["shellcheck", *map(str, (sdk / "docker").glob("*.sh"))]),
 ]
-for directory in ("devops/ec2-workspaces/tests", "tests/workspace-provisioning", "lambda/langfuse_cost_tracker/tests"):
-    if any((root / directory).glob("test*.py")):
+for directory in (source_path(root, "workspace", "tests"), root / "tests/workspace-provisioning",
+                  source_path(root, "cost", "tests")):
+    if any(directory.glob("test*.py")):
         commands.append(
-            (root, ["python", "-m", "unittest", "discover", "-s", directory, "-v"])
+            (root, ["python", "-m", "unittest", "discover", "-s", str(directory), "-v"])
         )
 failed = []
 for cwd, command in commands:
