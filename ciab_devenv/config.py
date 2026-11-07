@@ -73,8 +73,6 @@ class Environment:
         from .scaffolds import get_scaffold
         adapter = get_scaffold(scaffold, platform)
         adapter.validate_source(source)
-        if scaffold == "sdk" and provider != "direct":
-            raise DevError("SDK requires the direct provider.")
         if self.data and (self.data["source"] != str(source) or self.data["port"] != port or self.scaffold != adapter or self.data.get("provider", "direct") != provider):
             raise DevError("This instance already targets a source/port/scaffold/platform/provider. Use another --name or reset this instance first.")
         if not self.data:

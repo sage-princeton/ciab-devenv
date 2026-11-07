@@ -9,7 +9,9 @@ def prepare(settings):
 
 
 def settings_environment(settings):
-    return {'OPENAI_AGENTS_MODEL': settings['model'], 'OPENAI_AGENTS_REASONING_EFFORT': settings['effort']}
+    """Pass SDK model/provider selection to production validation and credential configuration."""
+    return {'OPENAI_AGENTS_MODEL': settings['model'], 'OPENAI_AGENTS_REASONING_EFFORT': settings['effort'],
+            'MODEL_PROVIDER': settings.get('provider', 'direct')}
 
 
 def installed(scaffold):

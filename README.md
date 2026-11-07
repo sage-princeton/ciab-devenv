@@ -21,6 +21,8 @@ direnv exec . ./devctl --name review bootstrap --source /absolute/crux-worktree 
 ./devctl --name review reset --confirm review
 ```
 
+SDK OpenRouter runs use `--provider openrouter` with an explicit model and an OpenRouter provider declared in the drop-in.
+
 Provisioning leaves the Run stopped; `run` starts it explicitly. Inspect actual
 artifacts and traces. Reprovision after changing source or inputs; use a fresh named
 instance when fresh state matters. After evidence is exported and cited, delete

@@ -203,3 +203,8 @@ before provisioning. The removed runner's legacy Docker work volume is not
 migrated or automatically deleted; preserve/export any old evidence before
 manually discarding that volume. Legacy machine subcommands `create`, `provision`
 and `delete` are replaced by `bootstrap`/`provision` and confirmed `reset`.
+
+SDK runs also accept `--provider openrouter`. Set `CRUX_MODEL` to an explicit provider model ID, supply the
+dedicated `OPENROUTER_API_KEY`, and declare an OpenRouter `runtime.model_provider` in the caller's drop-in.
+The production SDK validator checks that declaration and configures both Agents SDK and Codex endpoints;
+provider selection does not rewrite the drop-in or fall back to another credential.

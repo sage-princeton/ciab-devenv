@@ -66,6 +66,17 @@ class EnvironmentTests(unittest.TestCase):
         with self.assertRaises(DevError):
             instance.setup(self.source, 23101)
 
+    def test_sdk_openrouter_selection_reaches_production_configuration(self):
+        """SDK provider selection chooses credentials and reaches the production drop-in validator."""
+        from devops.sdk_setup import settings_environment
+        instance = Environment('sdk-router')
+        instance.setup(self.source, 23100, provider='openrouter')
+        self.assertEqual(instance.data['provider'], 'openrouter')
+        settings = settings_environment({'provider': 'openrouter', 'model': 'openai/test', 'effort': 'low'})
+        self.assertEqual(settings['MODEL_PROVIDER'], 'openrouter')
+        self.assertEqual(settings['OPENAI_AGENTS_MODEL'], 'openai/test')
+        self.assertEqual(settings_environment({'model': 'test', 'effort': 'low'})['MODEL_PROVIDER'], 'direct')
+
     def test_private_write_repairs_permissions(self):
         path = self.root / "config.json"
         path.write_text("old")
